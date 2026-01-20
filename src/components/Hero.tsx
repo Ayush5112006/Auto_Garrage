@@ -65,18 +65,18 @@ const Hero = () => {
           </div>
 
 
-          <div className="relative hidden lg:block">
-            <div className="absolute -inset-4 bg-primary/20 rounded-3xl blur-3xl" />
-            <div className="relative bg-gradient-to-br from-garage-steel to-garage-dark rounded-3xl p-8 border border-primary-foreground/10">
+          <div className="relative hidden lg:block perspective-container">
+            <div className="absolute -inset-4 bg-primary/20 rounded-3xl blur-3xl cube-3d" />
+            <div className="relative bg-gradient-to-br from-garage-steel to-garage-dark rounded-3xl p-8 border border-primary-foreground/10 scale-rotate-3d shadow-3d">
               <img
                 src="https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=600&h=500&fit=crop"
                 alt="Professional mechanic working on car engine"
-                className="w-full h-[500px] object-cover rounded-2xl"
+                className="w-full h-[500px] object-cover rounded-2xl float-3d"
               />
 
-              <div className="absolute -bottom-6 -left-6 bg-card p-6 rounded-2xl shadow-2xl border border-border">
+              <div className="absolute -bottom-6 -left-6 bg-card p-6 rounded-2xl shadow-2xl border border-border tilt-3d glow-3d">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-garage-success/10 rounded-xl flex items-center justify-center">
+                  <div className="w-14 h-14 bg-garage-success/10 rounded-xl flex items-center justify-center pulse-3d">
                     <Shield className="w-7 h-7 text-garage-success" />
                   </div>
                   <div>
