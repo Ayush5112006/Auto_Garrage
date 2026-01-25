@@ -9,6 +9,10 @@ import ServicesPage from "./pages/ServicesPage";
 import Admin from "./pages/Admin";
 import Staff from "./pages/Staff";
 import NotFound from "./pages/NotFound";
+import Track from "./pages/Track";
+import GarageListing from "./pages/GarageListing";
+import GarageDetail from "./pages/GarageDetail";
+import Dashboard from "./pages/Dashboard";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 export default function App() {
@@ -25,6 +29,10 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/staff" element={<Staff />} />
+          <Route path="/track" element={<Track />} />
+          <Route path="/garages" element={<GarageListing />} />
+          <Route path="/garage/:id" element={<GarageDetail />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

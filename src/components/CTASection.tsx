@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Phone, ArrowRight, Calendar } from "lucide-react";
+import { ArrowRight, LogIn } from "lucide-react";
 
 const CTASection = () => {
+  const isLoggedIn = !!localStorage.getItem("user");
+
   return (
     <section className="py-12 md:py-24 bg-primary relative overflow-hidden">
 
@@ -15,12 +17,12 @@ const CTASection = () => {
       <div className="container mx-auto px-4 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-display text-4xl md:text-6xl text-primary-foreground mb-6">
-            READY TO GET YOUR CAR
-            <span className="block">RUNNING LIKE NEW?</span>
+            FIND YOUR PERFECT GARAGE
+            <span className="block">AND BOOK YOUR SERVICE</span>
           </h2>
           <p className="text-xl text-primary-foreground/80 mb-10 max-w-2xl mx-auto">
-            Book your service appointment today and experience the difference of professional
-            auto care. We're ready to serve you!
+            Browse our trusted garages, compare services, and book your appointment today.
+            Select delivery or pickup options for convenience.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -30,22 +32,36 @@ const CTASection = () => {
               className="text-lg px-8 bg-primary-foreground text-primary hover:bg-primary-foreground/90"
               asChild
             >
-              <Link to="/booking">
-                <Calendar className="mr-2 w-5 h-5" />
-                Book Appointment
+              <Link to="/garages">
+                <ArrowRight className="mr-2 w-5 h-5" />
+                Find a Garage
               </Link>
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="text-lg px-8 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
-              asChild
-            >
-              <a href="tel:+1234567890">
-                <Phone className="mr-2 w-5 h-5" />
-                Call Now
-              </a>
-            </Button>
+            {isLoggedIn ? (
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-lg px-8 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+                asChild
+              >
+                <Link to="/dashboard">
+                  <LogIn className="mr-2 w-5 h-5" />
+                  My Dashboard
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-lg px-8 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+                asChild
+              >
+                <Link to="/login">
+                  <LogIn className="mr-2 w-5 h-5" />
+                  Login
+                </Link>
+              </Button>
+            )}
           </div>
 
 

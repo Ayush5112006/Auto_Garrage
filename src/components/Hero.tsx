@@ -42,13 +42,13 @@ const Hero = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <Button size="lg" className="text-lg px-8 animate-pulse-glow" asChild>
-                <Link to="/booking">
-                  Book Service
+                <Link to="/garages">
+                  Browse Garages
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10" asChild>
-                <Link to="/services">View Services</Link>
+                <Link to="/track">Track Booking</Link>
               </Button>
             </div>
 

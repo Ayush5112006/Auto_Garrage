@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Wrench, Phone } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Menu, X, Wrench } from "lucide-react";
 
 interface NavLink {
   name: string;
@@ -14,8 +13,8 @@ const Navbar = (): JSX.Element => {
 
   const navLinks: NavLink[] = [
     { name: "Home", path: "/" },
-    { name: "Services", path: "/services" },
-    { name: "Book Service", path: "/booking" },
+    { name: "Garages", path: "/garages" },
+    { name: "Track Order", path: "/track" },
     { name: "About", path: "/about" },
     { name: "Contact", path: "/contact" },
   ];
@@ -50,16 +49,6 @@ const Navbar = (): JSX.Element => {
             ))}
           </div>
 
-          <div className="hidden lg:flex items-center gap-4">
-            <a href="tel:+1234567890" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-              <Phone className="w-4 h-4" />
-              (123) 456-7890
-            </a>
-            <Button asChild>
-              <Link to="/booking">Book Now</Link>
-            </Button>
-          </div>
-
           <button
             className="lg:hidden p-2"
             onClick={() => setIsOpen(!isOpen)}
@@ -84,9 +73,6 @@ const Navbar = (): JSX.Element => {
                 {link.name}
               </Link>
             ))}
-            <Button asChild className="w-full mt-4">
-              <Link to="/booking" onClick={() => setIsOpen(false)}>Book Now</Link>
-            </Button>
           </div>
         )}
       </div>

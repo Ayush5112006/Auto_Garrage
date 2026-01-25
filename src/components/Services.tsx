@@ -1,48 +1,42 @@
-import { Link } from "react-router-dom";
 import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const services = [
   {
     icon: Droplets,
     name: "Oil Change",
     description: "Premium oil changes with quality filters to keep your engine running smoothly.",
-    price: "From $49",
     popular: true,
   },
   {
     icon: Settings,
     name: "Engine Repair",
     description: "Complete engine diagnostics and repair services by certified technicians.",
-    price: "From $199",
     popular: false,
   },
   {
     icon: Disc,
     name: "Brake Service",
     description: "Brake inspection, pad replacement, and rotor resurfacing for safe driving.",
-    price: "From $89",
     popular: true,
   },
   {
     icon: Sparkles,
     name: "Car Wash & Detail",
     description: "Interior and exterior detailing to make your car look brand new.",
-    price: "From $29",
     popular: false,
   },
   {
     icon: Wind,
     name: "AC Service",
     description: "AC inspection, recharge, and repair to keep you cool on the road.",
-    price: "From $79",
     popular: false,
   },
   {
     icon: CircleDot,
     name: "Tire Services",
     description: "Tire rotation, balancing, alignment, and replacement services.",
-    price: "From $39",
     popular: true,
   },
 ];
@@ -82,16 +76,6 @@ const Services = () => {
 
               <h3 className="font-display text-2xl text-card-foreground mb-3">{service.name}</h3>
               <p className="text-muted-foreground text-sm mb-4">{service.description}</p>
-
-              <div className="flex items-center justify-between pt-4 border-t border-border">
-                <span className="font-display text-xl text-primary">{service.price}</span>
-                <Link
-                  to="/booking"
-                  className="text-sm font-medium text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
-                >
-                  Book Now <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
             </div>
           ))}
         </div>

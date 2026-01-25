@@ -1,12 +1,8 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import CurrencyToggle from "@/components/ui/currency-toggle";
-import useExchangeRate from "@/hooks/useExchangeRate";
-import { convertUSDToINR, formatCurrency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
-import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, Battery, Gauge, Wrench, Zap, ArrowRight, Check } from "lucide-react";
+import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, Battery, Gauge, Wrench, Zap, Check, ArrowRight } from "lucide-react";
 
 const allServices = [
   {
@@ -82,9 +78,6 @@ const allServices = [
 ];
 
 const ServicesPage = () => {
-  const { rate, loading: rateLoading } = useExchangeRate();
-  const [currency, setCurrency] = useState<'USD'|'INR'>('INR');
-
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -92,13 +85,6 @@ const ServicesPage = () => {
         <div className="container mx-auto px-4">
 
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <CurrencyToggle value={currency} onChange={setCurrency} />
-              <div className="text-sm text-muted-foreground">
-                {rateLoading ? 'Fetching rate...' : rate ? `1 USD = ${rate.toFixed(4)} INR` : 'Rate unavailable'}
-              </div>
-            </div>
-
             <span className="text-primary font-medium text-sm uppercase tracking-wider">Our Services</span>
             <h1 className="font-display text-4xl md:text-5xl text-foreground mt-3 mb-4">
               COMPLETE AUTO CARE
@@ -122,16 +108,13 @@ const ServicesPage = () => {
                   </div>
 
                   <div className="flex-1">
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="mb-3">
                       <h3 className="font-display text-2xl text-card-foreground">{service.name}</h3>
-                      <span className="font-display text-xl text-primary">{
-                        `From ${currency === 'USD' ? formatCurrency(service.price, 'USD') : rate ? formatCurrency(convertUSDToINR(service.price, rate), 'INR') : '₹--'}`
-                      }</span>
                     </div>
 
                     <p className="text-muted-foreground text-sm mb-4">{service.description}</p>
 
-                    <div className="grid grid-cols-2 gap-2 mb-6">
+                    <div className="grid grid-cols-2 gap-2">
                       {service.features.map((feature, i) => (
                         <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Check className="w-4 h-4 text-primary shrink-0" />
@@ -139,13 +122,6 @@ const ServicesPage = () => {
                         </div>
                       ))}
                     </div>
-
-                    <Button asChild variant="outline" className="w-full">
-                      <Link to="/booking">
-                        Book This Service
-                        <ArrowRight className="ml-2 w-4 h-4" />
-                      </Link>
-                    </Button>
                   </div>
                 </div>
               </div>

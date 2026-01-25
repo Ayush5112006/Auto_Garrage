@@ -15,14 +15,14 @@ export const bookingSchema = z.object({
   email: z.string().email("Enter a valid email"),
   phone: z.string().min(7, "Enter a valid phone").optional(),
   vehicle: z.string().min(2, "Vehicle info required"),
+  deliveryOption: z.enum(["none", "pickup", "delivery"], {
+    errorMap: () => ({ message: "Please select a delivery option" })
+  }),
+  homeAddress: z.string().min(5, "Address is required").optional(),
   notes: z.string().max(500).optional(),
 });
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import CurrencyToggle from "@/components/ui/currency-toggle";
-import InvoiceModal from "@/components/ui/invoice-modal";
-import useExchangeRate from "@/hooks/useExchangeRate";
-import { convertUSDToINR, formatCurrency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,16 +30,22 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CalendarDays, Clock, Car, User, Mail, Phone, CheckCircle } from "lucide-react";
+import { CalendarDays, Clock, Car, User, Mail, Phone, CheckCircle, Truck, Home, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const services = [
-  { id: "oil-change", name: "Oil Change", price: 49 },
-  { id: "engine-repair", name: "Engine Repair", price: 199 },
-  { id: "brake-service", name: "Brake Service", price: 89 },
-  { id: "car-wash", name: "Car Wash & Detail", price: 29 },
-  { id: "ac-service", name: "AC Service", price: 79 },
-  { id: "tire-service", name: "Tire Services", price: 39 },
+  { id: "oil-change", name: "Oil Change", price: 2499 },
+  { id: "engine-repair", name: "Engine Repair", price: 9999 },
+  { id: "brake-service", name: "Brake Service", price: 4499 },
+  { id: "car-wash", name: "Car Wash & Detail", price: 1499 },
+  { id: "ac-service", name: "AC Service", price: 3999 },
+  { id: "tire-service", name: "Tire Services", price: 1999 },
+];
+
+const deliveryOptions = [
+  { id: "none", label: "Visit Garage (No Delivery)", price: 0, description: "Drop off at garage" },
+  { id: "pickup", label: "Pickup from Home", price: 299, description: "We pick up your car and return it" },
+  { id: "delivery", label: "Pickup & Delivery", price: 499, description: "Full home service with dropoff & pickup" },
 ];
 
 const timeSlots = [
@@ -56,37 +62,62 @@ const Booking = () => {
   const { register, handleSubmit, control, watch, formState: { errors, isValid, isSubmitting } } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
     mode: 'onChange',
-    defaultValues: { date: undefined, selectedServices: [], selectedTime: '', name: '', email: '', phone: '', vehicle: '', notes: '' }
+    defaultValues: { date: undefined, selectedServices: [], selectedTime: '', name: '', email: '', phone: '', vehicle: '', deliveryOption: 'none', homeAddress: '', notes: '' }
   });
 
   const watchedServices = (watch('selectedServices') || []) as string[];
+  const watchedDeliveryOption = (watch('deliveryOption') || 'none') as string;
 
-  const subtotalUSD = (watchedServices || []).reduce((sum, id) => {
+  const deliveryFee = deliveryOptions.find(opt => opt.id === watchedDeliveryOption)?.price || 0;
+
+  const subtotalINR = (watchedServices || []).reduce((sum, id) => {
     const s = services.find((x) => x.id === id);
     return sum + (s?.price ?? 0);
   }, 0);
 
-
+  const totalINR = subtotalINR + deliveryFee;
 
   const onSubmit = (data: BookingFormValues) => {
+    // Generate Tracking ID
+    const trackingId = `GAR-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    
+    // Save booking to localStorage
+    const booking = {
+      trackingId,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      vehicle: data.vehicle,
+      services: watchedServices.map(id => {
+        const s = services.find(x => x.id === id);
+        return { id, name: s?.name, price: s?.price };
+      }),
+      date: data.date?.toISOString().split('T')[0],
+      time: data.selectedTime,
+      deliveryOption: data.deliveryOption,
+      deliveryFee: deliveryFee,
+      homeAddress: data.homeAddress || '',
+      subtotal: subtotalINR,
+      total: totalINR,
+      status: 'Pending',
+      createdAt: new Date().toISOString(),
+    };
+    
+    const existingBookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+    existingBookings.push(booking);
+    localStorage.setItem('bookings', JSON.stringify(existingBookings));
+    localStorage.setItem('lastTrackingId', trackingId);
+    
     setIsSubmitted(true);
     toast({
       title: "Booking Confirmed!",
-      description: "You will receive a confirmation email shortly.",
+      description: `Tracking ID: ${trackingId}`,
     });
   };
 
 
-  const { rate, loading: rateLoading } = useExchangeRate();
-  const [currency, setCurrency] = useState<'USD'|'INR'>('INR');
 
-  const formattedSubtotalUSD = formatCurrency(subtotalUSD, 'USD');
-  const formattedSubtotalConverted = typeof rate === 'number' ? formatCurrency(convertUSDToINR(subtotalUSD, rate), 'INR') : '₹--';
-
-  const selectedItems = watchedServices.map((id) => services.find((s) => s.id === id)!).filter(Boolean).map(s => ({ name: s!.name, price: s!.price }));
-  const [showInvoice, setShowInvoice] = useState(false);
-
-
+  const lastTrackingId = localStorage.getItem('lastTrackingId') || 'GAR-XXXXXX';
 
   if (isSubmitted) {
     return (
@@ -95,15 +126,27 @@ const Booking = () => {
         <main className="pt-32 pb-24 bg-background">
           <div className="container mx-auto px-4">
             <div className="max-w-lg mx-auto text-center">
-              <div className="w-24 h-24 bg-garage-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-12 h-12 text-garage-success" />
+              <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="w-12 h-12 text-green-600" />
               </div>
               <h1 className="font-display text-4xl text-foreground mb-4">BOOKING CONFIRMED!</h1>
+              
+              <Card className="my-8 bg-primary/5 border-primary/20">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground mb-2">Your Tracking ID</p>
+                  <p className="font-mono text-3xl font-bold text-primary mb-4">{lastTrackingId}</p>
+                  <p className="text-sm text-muted-foreground">Save this ID to track your booking status</p>
+                </CardContent>
+              </Card>
+              
               <p className="text-muted-foreground mb-8">
-                Thank you for your booking. We have sent a confirmation email with all the details.
+                Thank you for your booking. You can track your service status anytime using your Tracking ID.
                 Our team will contact you shortly to confirm your appointment.
               </p>
-              <Button onClick={() => setIsSubmitted(false)}>Book Another Service</Button>
+              <div className="flex gap-4 justify-center">
+                <Button onClick={() => { window.location.href = '/track'; }}>Track Booking</Button>
+                <Button variant="outline" onClick={() => setIsSubmitted(false)}>Book Another Service</Button>
+              </div>
             </div>
           </div>
         </main>
@@ -119,13 +162,6 @@ const Booking = () => {
         <div className="container mx-auto px-4">
 
           <div className="text-center max-w-2xl mx-auto mb-8 md:mb-12">
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <CurrencyToggle value={currency} onChange={setCurrency} />
-              <div className="text-sm text-muted-foreground">
-                {rateLoading ? 'Fetching rate...' : rate ? `1 USD = ${rate.toFixed(4)} INR` : 'Rate unavailable'}
-              </div>
-            </div>
-
             <span className="text-primary font-medium text-sm uppercase tracking-wider">Online Booking</span>
             <h1 className="font-display text-4xl md:text-5xl text-foreground mt-3 mb-4">
               BOOK YOUR SERVICE
@@ -174,11 +210,7 @@ const Booking = () => {
                         <span className="font-medium">{service.name}</span>
                       </div>
                       <span className="font-display text-lg text-primary">
-                        {currency === 'USD'
-                          ? formatCurrency(service.price, 'USD')
-                          : rate
-                            ? formatCurrency(convertUSDToINR(service.price, rate), 'INR')
-                            : '₹--'}
+                        ₹{service.price.toLocaleString('en-IN')}
                       </span>
                     </label>
                   ))}
@@ -302,39 +334,100 @@ const Booking = () => {
                     {errors.notes && <p className="text-sm text-destructive mt-1">{errors.notes.message as string}</p> }
                   </div>
 
-                  <div className="flex items-center justify-between mt-2 mb-4">
-                    <div className="text-sm text-muted-foreground">Subtotal</div>
-                    <div className="text-right">
-                      <div className="font-display text-lg text-primary">{formattedSubtotalUSD}</div>
-                      <div className="text-sm text-muted-foreground">{rate ? `≈ ${formattedSubtotalConverted}` : ''}</div>
+                  <div className="pt-4 border-t">
+                    <Label className="text-base font-semibold mb-4 block">Delivery & Pickup Options</Label>
+                    <div className="space-y-3">
+                      {deliveryOptions.map((option) => (
+                        <label
+                          key={option.id}
+                          className={`flex items-start p-4 rounded-xl border cursor-pointer transition-all ${
+                            watchedDeliveryOption === option.id
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            {...register('deliveryOption')}
+                            value={option.id}
+                            className="sr-only"
+                          />
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                            watchedDeliveryOption === option.id ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`}>
+                            {watchedDeliveryOption === option.id && (
+                              <div className="w-2 h-2 bg-white rounded-full" />
+                            )}
+                          </div>
+                          <div className="ml-4 flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              {option.id === 'none' && <Home className="w-4 h-4 text-primary" />}
+                              {option.id === 'pickup' && <Truck className="w-4 h-4 text-primary" />}
+                              {option.id === 'delivery' && <MapPin className="w-4 h-4 text-primary" />}
+                              <p className="font-medium">{option.label}</p>
+                              <span className="ml-auto text-primary font-display">+₹{option.price}</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{option.description}</p>
+                          </div>
+                        </label>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="flex gap-3 mb-4">
-                    <button
-                      type="button"
-                      className="px-4 py-2 bg-muted rounded disabled:opacity-60"
-                      onClick={() => setShowInvoice(true)}
-                      disabled={watchedServices.length === 0}
-                    >
-                      View Bill
-                    </button>
+                  {(watchedDeliveryOption === 'pickup' || watchedDeliveryOption === 'delivery') && (
+                    <div>
+                      <Label htmlFor="homeAddress" className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        Home Address
+                      </Label>
+                      <Textarea
+                        id="homeAddress"
+                        placeholder="Enter your complete home address for pickup..."
+                        className="mt-1"
+                        rows={2}
+                        {...register('homeAddress')}
+                      />
+                      {errors.homeAddress && <p className="text-sm text-destructive mt-1">{errors.homeAddress.message as string}</p> }
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-primary" />
+                    Price Breakdown
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">Service Total</div>
+                      <div className="text-right">
+                        <div className="font-display text-lg text-primary">₹{subtotalINR.toLocaleString('en-IN')}</div>
+                      </div>
+                    </div>
+                    {deliveryFee > 0 && (
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-muted-foreground">
+                          Delivery Fee
+                          <span className="ml-1 text-xs">({deliveryOptions.find(o => o.id === watchedDeliveryOption)?.label})</span>
+                        </div>
+                        <div className="font-display text-lg text-primary">+₹{deliveryFee.toLocaleString('en-IN')}</div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="font-semibold">Total Amount</div>
+                      <div className="font-display text-2xl text-primary">₹{totalINR.toLocaleString('en-IN')}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
                     <Button type="submit" className="flex-1" size="lg" disabled={!isValid || isSubmitting}>
                       Confirm Booking
                     </Button>
                   </div>
-
-                  {showInvoice && (
-                    <InvoiceModal
-                      open={showInvoice}
-                      onClose={() => setShowInvoice(false)}
-                      items={selectedItems}
-                      subtotalUSD={subtotalUSD}
-                      currency={currency}
-                      rate={typeof rate === 'number' ? rate : null}
-                    />
-                  )}
                 </CardContent>
               </Card>
             </div>
