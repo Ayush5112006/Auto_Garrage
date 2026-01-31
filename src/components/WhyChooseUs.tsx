@@ -1,4 +1,5 @@
 import { CheckCircle, Users, Clock, Wallet, Shield, Headphones } from "lucide-react";
+import { TiltCard } from "@/components/ui/tilt-card";
 
 const features = [
   {
@@ -52,15 +53,17 @@ const WhyChooseUs = () => {
 
             <div className="grid sm:grid-cols-2 gap-6">
               {features.map((feature, index) => (
-                <div key={index} className="flex gap-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                    <feature.icon className="w-6 h-6 text-primary" />
+                <TiltCard key={index} className="h-full">
+                  <div className="flex gap-4 p-4 rounded-xl hover:bg-card/50 transition-colors h-full">
+                    <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                      <feature.icon className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white mb-1">{feature.title}</h3>
+                      <p className="text-sm text-gray-300">{feature.description}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground mb-1">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
+                </TiltCard>
               ))}
             </div>
           </div>

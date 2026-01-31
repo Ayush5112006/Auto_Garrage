@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, Battery, Gauge, Wrench, Zap, Check, ArrowRight } from "lucide-react";
+import { TiltCard } from "@/components/ui/tilt-card";
 
 const allServices = [
   {
@@ -80,7 +80,6 @@ const allServices = [
 const ServicesPage = () => {
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
 
@@ -98,33 +97,34 @@ const ServicesPage = () => {
 
           <div className="grid md:grid-cols-2 gap-8">
             {allServices.map((service, index) => (
-              <div
-                key={index}
-                className="bg-card rounded-2xl p-6 md:p-8 border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5"
-              >
-                <div className="flex items-start gap-6">
-                  <div className="w-12 h-12 md:w-16 md:h-16 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
-                    <service.icon className="w-8 h-8 text-primary" />
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="mb-3">
-                      <h3 className="font-display text-2xl text-card-foreground">{service.name}</h3>
+              <TiltCard key={index} className="h-full">
+                <div
+                  className="bg-card rounded-2xl p-6 md:p-8 border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 h-full"
+                >
+                  <div className="flex items-start gap-6">
+                    <div className="w-12 h-12 md:w-16 md:h-16 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
+                      <service.icon className="w-8 h-8 text-primary" />
                     </div>
 
-                    <p className="text-muted-foreground text-sm mb-4">{service.description}</p>
+                    <div className="flex-1">
+                      <div className="mb-3">
+                        <h3 className="font-display text-2xl text-card-foreground">{service.name}</h3>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      {service.features.map((feature, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Check className="w-4 h-4 text-primary shrink-0" />
-                          {feature}
-                        </div>
-                      ))}
+                      <p className="text-muted-foreground text-sm mb-4">{service.description}</p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {service.features.map((feature, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Check className="w-4 h-4 text-primary shrink-0" />
+                            {feature}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </TiltCard>
             ))}
           </div>
 

@@ -14,25 +14,39 @@ import GarageListing from "./pages/GarageListing";
 import GarageDetail from "./pages/GarageDetail";
 import Dashboard from "./pages/Dashboard";
 import ErrorBoundary from "./components/ErrorBoundary";
+import DotPattern from "./components/ui/dot-pattern";
+import { MainLayout } from "./components/MainLayout";
 
 export default function App() {
   return (
     <ErrorBoundary>
+      <DotPattern
+        className="fixed inset-0 z-[50] pointer-events-none opacity-30 text-white fill-white"
+        width={24}
+        height={24}
+        cx={1.5}
+        cy={1.5}
+        cr={1.5}
+      />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/booking" element={<Booking />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Index />} />
+            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/booking" element={<Booking />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/garages" element={<GarageListing />} />
+            <Route path="/garage/:id" element={<GarageDetail />} />
+            <Route path="/track" element={<Track />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Route>
+
+          {/* Routes without Navbar/Transition if needed, or wrapped separately */}
           <Route path="/admin" element={<Admin />} />
           <Route path="/staff" element={<Staff />} />
-          <Route path="/track" element={<Track />} />
-          <Route path="/garages" element={<GarageListing />} />
-          <Route path="/garage/:id" element={<GarageDetail />} />
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -10,7 +10,6 @@ export const contactSchema = z.object({
   subject: z.string().min(2, "Subject is required"),
   message: z.string().min(10, "Message should be at least 10 characters"),
 });
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MapPin, Phone, Mail, Clock, Send, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { GlitchText } from "@/components/ui/glitch-text";
+import { TiltCard } from "@/components/ui/tilt-card";
 
 const contactInfo = [
   {
@@ -65,14 +66,13 @@ const Contact = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
 
           <div className="text-center max-w-2xl mx-auto mb-16">
             <span className="text-primary font-medium text-sm uppercase tracking-wider">Get In Touch</span>
             <h1 className="font-display text-4xl md:text-5xl text-foreground mt-3 mb-4">
-              CONTACT US
+              <GlitchText text="CONTACT US" className="text-foreground" speed={40} />
             </h1>
             <p className="text-muted-foreground">
               Have questions or need assistance? We're here to help. Reach out to us
@@ -80,30 +80,46 @@ const Contact = () => {
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 max-w-6xl mx-auto">
+            {/* Contact Info Column */}
+            <div className="space-y-8">
+              <TiltCard className="h-full">
+                <Card className="h-full bg-gradient-to-br from-card to-card/50 border-primary/20">
+                  <CardHeader>
+                    <CardTitle className="className='text-2xl'">Contact Information</CardTitle>
+                    <CardDescription>Find us using the details below</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-8">
+                    {contactInfo.map((item, index) => (
+                      <div key={index} className="flex items-start gap-4 p-4 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
+                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                          <item.icon className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-foreground text-lg mb-1">{item.title}</h3>
+                          {item.details.map((detail, i) => (
+                            <p key={i} className="text-muted-foreground">{detail}</p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
 
-            <div className="space-y-6">
-              {contactInfo.map((item, index) => (
-                <Card key={index}>
-                  <CardContent className="flex items-start gap-4 p-6">
-                    <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                      <item.icon className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground mb-1">{item.title}</h3>
-                      {item.details.map((detail, i) => (
-                        <p key={i} className="text-sm text-muted-foreground">{detail}</p>
-                      ))}
+                    {/* Decorative Element */}
+                    <div className="pt-8 mt-8 border-t border-border/50">
+                      <div className="flex items-center gap-2 text-primary/80">
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                        <span className="text-sm font-mono tracking-widest uppercase">System Online • 24/7 Support</span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              </TiltCard>
             </div>
 
-
-            <Card className="lg:col-span-2">
+            {/* Contact Form Column */}
+            <Card className="lg:col-span-1 border-2">
               <CardHeader>
-                <CardTitle>Send Us a Message</CardTitle>
+                <CardTitle className="text-2xl">Send Us a Message</CardTitle>
                 <CardDescription>
                   Fill out the form below and we'll get back to you as soon as possible.
                 </CardDescription>
@@ -124,46 +140,45 @@ const Contact = () => {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div>
-                        <Label htmlFor="name">Full Name</Label>
-                        <Input id="name" placeholder="John Doe" className="mt-1" {...register('name')} />
-                        {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message as string}</p>}
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Full Name</Label>
+                          <Input id="name" placeholder="John Doe" {...register('name')} />
+                          {errors.name && <p className="text-sm text-destructive">{errors.name.message as string}</p>}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="phone">Phone (Optional)</Label>
+                          <Input id="phone" type="tel" placeholder="(123) 456-7890" {...register('phone')} />
+                        </div>
                       </div>
-                      <div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="email">Email Address</Label>
-                        <Input id="email" type="email" placeholder="john@example.com" className="mt-1" {...register('email')} />
-                        {errors.email && <p className="text-sm text-destructive mt-1">{errors.email.message as string}</p>}
+                        <Input id="email" type="email" placeholder="john@example.com" {...register('email')} />
+                        {errors.email && <p className="text-sm text-destructive">{errors.email.message as string}</p>}
                       </div>
-                    </div>
 
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div>
-                        <Label htmlFor="phone">Phone Number</Label>
-                        <Input id="phone" type="tel" placeholder="(123) 456-7890" className="mt-1" {...register('phone')} />
-                        {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message as string}</p>}
-                      </div>
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="subject">Subject</Label>
-                        <Input id="subject" placeholder="How can we help?" className="mt-1" {...register('subject')} />
-                        {errors.subject && <p className="text-sm text-destructive mt-1">{errors.subject.message as string}</p>}
+                        <Input id="subject" placeholder="How can we help?" {...register('subject')} />
+                        {errors.subject && <p className="text-sm text-destructive">{errors.subject.message as string}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="message">Message</Label>
+                        <Textarea
+                          id="message"
+                          placeholder="Tell us more about your inquiry..."
+                          rows={6}
+                          {...register('message')}
+                        />
+                        {errors.message && <p className="text-sm text-destructive">{errors.message.message as string}</p>}
                       </div>
                     </div>
 
-                    <div>
-                      <Label htmlFor="message">Message</Label>
-                      <Textarea
-                        id="message"
-                        placeholder="Tell us more about your inquiry..."
-                        className="mt-1"
-                        rows={6}
-                        {...register('message')}
-                      />
-                      {errors.message && <p className="text-sm text-destructive mt-1">{errors.message.message as string}</p>}
-                    </div>
-
-                    <Button type="submit" size="lg" className="w-full md:w-auto" disabled={!isValid || isSubmitting}>
-                      <Send className="mr-2 w-5 h-5" />
+                    <Button type="submit" size="lg" className="w-full" disabled={!isValid || isSubmitting}>
+                      <Send className="mr-2 w-4 h-4" />
                       Send Message
                     </Button>
                   </form>

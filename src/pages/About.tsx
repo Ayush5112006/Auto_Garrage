@@ -1,7 +1,8 @@
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CTASection from "@/components/CTASection";
 import { Users, Award, Clock, Target, CheckCircle } from "lucide-react";
+import { GlitchText } from "@/components/ui/glitch-text";
+import { TiltCard } from "@/components/ui/tilt-card";
 
 const stats = [
   { icon: Users, value: "50+", label: "Expert Mechanics" },
@@ -36,7 +37,6 @@ const team = [
 const About = () => {
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main>
 
         <section className="pt-32 pb-16 bg-muted">
@@ -45,7 +45,7 @@ const About = () => {
               <span className="text-primary font-medium text-sm uppercase tracking-wider">About Us</span>
               <h1 className="font-display text-4xl md:text-6xl text-foreground mt-3 mb-6">
                 YOUR TRUSTED AUTO
-                <span className="text-primary block">CARE PARTNER</span>
+                <GlitchText text="CARE PARTNER" className="text-primary block" speed={40} />
               </h1>
               <p className="text-lg text-muted-foreground">
                 Since 2009, Auto Garage has been providing exceptional automotive services
@@ -137,17 +137,19 @@ const About = () => {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               {team.map((member, index) => (
-                <div key={index} className="bg-card rounded-2xl overflow-hidden border border-border">
-                  <img
-                    src={member.image}
-                    alt={member.name}
-                    className="w-full h-64 object-cover"
-                  />
-                  <div className="p-6 text-center">
-                    <h3 className="font-display text-xl text-card-foreground">{member.name}</h3>
-                    <p className="text-sm text-muted-foreground">{member.role}</p>
+                <TiltCard key={index} className="h-full">
+                  <div className="bg-card rounded-2xl overflow-hidden border border-border h-full">
+                    <img
+                      src={member.image}
+                      alt={member.name}
+                      className="w-full h-64 object-cover"
+                    />
+                    <div className="p-6 text-center">
+                      <h3 className="font-display text-xl text-card-foreground">{member.name}</h3>
+                      <p className="text-sm text-muted-foreground">{member.role}</p>
+                    </div>
                   </div>
-                </div>
+                </TiltCard>
               ))}
             </div>
           </div>

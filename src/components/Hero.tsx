@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Shield, Clock, Award } from "lucide-react";
+import ThreeDCar from "./ThreeDCar";
+import { GlitchText } from "@/components/ui/glitch-text";
 
 const Hero = () => {
   const stats = [
@@ -30,12 +32,12 @@ const Hero = () => {
               <span className="text-sm text-primary font-medium">Trusted Auto Care Since 2009</span>
             </div>
 
-            <h1 className="font-display text-5xl md:text-6xl lg:text-7xl text-primary-foreground leading-tight mb-6">
+            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl text-white leading-tight mb-6">
               EXPERT CAR
-              <span className="block text-primary">SERVICE & REPAIR</span>
+              <GlitchText text="SERVICE & REPAIR" className="block text-primary" speed={40} />
             </h1>
 
-            <p className="text-lg text-primary-foreground/70 max-w-xl mx-auto lg:mx-0 mb-8">
+            <p className="text-lg text-gray-300 max-w-xl mx-auto lg:mx-0 mb-8">
               From routine maintenance to complex repairs, our certified technicians deliver
               exceptional service with transparency and care. Book your appointment today.
             </p>
@@ -47,18 +49,18 @@ const Hero = () => {
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" className="text-lg px-8 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10" asChild>
+              <Button size="lg" variant="outline" className="text-lg px-8 border-white/20 text-white hover:bg-white/10" asChild>
                 <Link to="/track">Track Booking</Link>
               </Button>
             </div>
 
 
-            <div className="grid grid-cols-3 gap-6 mt-12 pt-12 border-t border-primary-foreground/10">
+            <div className="grid grid-cols-3 gap-6 mt-12 pt-12 border-t border-white/10">
               {stats.map((stat, index) => (
                 <div key={index} className="text-center lg:text-left">
                   <stat.icon className="w-8 h-8 text-primary mx-auto lg:mx-0 mb-2" />
-                  <div className="font-display text-3xl text-primary-foreground">{stat.value}</div>
-                  <div className="text-sm text-primary-foreground/60">{stat.label}</div>
+                  <div className="font-display text-3xl text-white">{stat.value}</div>
+                  <div className="text-sm text-gray-400">{stat.label}</div>
                 </div>
               ))}
             </div>
@@ -67,12 +69,10 @@ const Hero = () => {
 
           <div className="relative hidden lg:block perspective-container">
             <div className="absolute -inset-4 bg-primary/20 rounded-3xl blur-3xl cube-3d" />
-            <div className="relative bg-gradient-to-br from-garage-steel to-garage-dark rounded-3xl p-8 border border-primary-foreground/10 scale-rotate-3d shadow-3d">
-              <img
-                src="https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=600&h=500&fit=crop"
-                alt="Professional mechanic working on car engine"
-                className="w-full h-[500px] object-cover rounded-2xl float-3d"
-              />
+            <div className="relative bg-gradient-to-br from-garage-steel to-garage-dark rounded-3xl p-8 border border-primary-foreground/10 scale-rotate-3d shadow-3d h-[600px]">
+              <div className="w-full h-full rounded-2xl overflow-hidden float-3d">
+                <ThreeDCar />
+              </div>
 
               <div className="absolute -bottom-6 -left-6 bg-card p-6 rounded-2xl shadow-2xl border border-border tilt-3d glow-3d">
                 <div className="flex items-center gap-4">

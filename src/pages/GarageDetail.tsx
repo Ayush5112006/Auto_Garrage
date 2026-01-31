@@ -1,5 +1,4 @@
 import { useParams, useNavigate } from "react-router-dom";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -171,7 +170,6 @@ const GarageDetail = () => {
   if (!garage) {
     return (
       <div className="min-h-screen">
-        <Navbar />
         <main className="pt-32 pb-24 bg-background">
           <div className="container mx-auto px-4 text-center">
             <h1 className="text-3xl font-bold mb-4">Garage Not Found</h1>
@@ -185,7 +183,7 @@ const GarageDetail = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
+
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
           {/* Hero Section */}

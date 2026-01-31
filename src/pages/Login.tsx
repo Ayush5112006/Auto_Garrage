@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +30,7 @@ export default function Login() {
       if (res.data.status === true) {
         localStorage.setItem("authToken", res.data.token || "");
         localStorage.setItem("user", JSON.stringify(res.data.user));
-        
+
         toast({
           title: "Login Successful!",
           description: "Welcome back! Redirecting to dashboard...",
@@ -60,7 +59,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
+
       <main className="pt-32 pb-24 bg-gradient-to-b from-background to-muted/30">
         <div className="container mx-auto px-4">
           <div className="max-w-md mx-auto">

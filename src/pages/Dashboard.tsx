@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, Car, LogOut, Plus, Settings } from "lucide-react";
+import { TiltCard } from "@/components/ui/tilt-card";
 
 interface User {
   id?: number;
@@ -94,7 +94,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
+
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
           {/* Header */}

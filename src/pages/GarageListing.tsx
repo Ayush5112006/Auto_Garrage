@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Phone, Clock, ArrowRight, Search } from "lucide-react";
+import { TiltCard } from "@/components/ui/tilt-card";
+import { GlitchText } from "@/components/ui/glitch-text";
 
 interface Garage {
   id: number;
@@ -108,14 +109,13 @@ const GarageListing = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
           {/* Header */}
           <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-primary font-medium text-sm uppercase tracking-wider">Find Your Garage</span>
             <h1 className="font-display text-4xl md:text-5xl text-foreground mt-3 mb-4">
-              BROWSE GARAGES
+              <GlitchText text="BROWSE GARAGES" className="text-foreground" speed={40} />
             </h1>
             <p className="text-muted-foreground">
               Choose from our network of trusted and verified auto repair centers across India.
@@ -145,79 +145,81 @@ const GarageListing = () => {
           {/* Garage Grid */}
           {filteredGarages.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
               {filteredGarages.map((garage) => (
-                <Card
-                  key={garage.id}
-                  className="overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col"
-                >
-                  {/* Image */}
-                  <div className="relative h-48 bg-muted overflow-hidden">
-                    <img
-                      src={garage.image}
-                      alt={garage.name}
-                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                    />
-                    {garage.isOpen && (
-                      <Badge className="absolute top-4 right-4 bg-green-500 text-white">Open Now</Badge>
-                    )}
-                  </div>
+                <TiltCard key={garage.id} className="h-full">
+                  <Card
+                    className="overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col h-full bg-card/80 backdrop-blur-sm border-white/10"
+                  >
+                    {/* Image */}
+                    <div className="relative h-48 bg-muted overflow-hidden">
+                      <img
+                        src={garage.image}
+                        alt={garage.name}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                      />
+                      {garage.isOpen && (
+                        <Badge className="absolute top-4 right-4 bg-green-500 text-white">Open Now</Badge>
+                      )}
+                    </div>
 
-                  {/* Content */}
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-start justify-between gap-2">
-                      <span className="text-lg">{garage.name}</span>
-                      <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span className="text-sm font-semibold">{garage.rating}</span>
+                    {/* Content */}
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-start justify-between gap-2">
+                        <span className="text-lg">{garage.name}</span>
+                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded">
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                          <span className="text-sm font-semibold">{garage.rating}</span>
+                        </div>
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        ({garage.reviews} reviews)
+                      </CardDescription>
+                    </CardHeader>
+
+                    <CardContent className="flex-1 space-y-3">
+                      {/* Location */}
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span className="text-sm">{garage.location}</span>
                       </div>
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      ({garage.reviews} reviews)
-                    </CardDescription>
-                  </CardHeader>
 
-                  <CardContent className="flex-1 space-y-3">
-                    {/* Location */}
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{garage.location}</span>
-                    </div>
-
-                    {/* Phone */}
-                    <div className="flex items-start gap-2">
-                      <Phone className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{garage.phone}</span>
-                    </div>
-
-                    {/* Time */}
-                    <div className="flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{garage.openTime}</span>
-                    </div>
-
-                    {/* Services */}
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-2">Services:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {garage.services.map((service, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {service}
-                          </Badge>
-                        ))}
+                      {/* Phone */}
+                      <div className="flex items-start gap-2">
+                        <Phone className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span className="text-sm">{garage.phone}</span>
                       </div>
-                    </div>
-                  </CardContent>
 
-                  {/* Action Button */}
-                  <div className="p-4 border-t">
-                    <Button
-                      onClick={() => navigate(`/garage/${garage.id}`)}
-                      className="w-full"
-                    >
-                      View Details <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </div>
-                </Card>
+                      {/* Time */}
+                      <div className="flex items-start gap-2">
+                        <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span className="text-sm">{garage.openTime}</span>
+                      </div>
+
+                      {/* Services */}
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">Services:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {garage.services.map((service, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">
+                              {service}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+
+                    {/* Action Button */}
+                    <div className="p-4 border-t">
+                      <Button
+                        onClick={() => navigate(`/garage/${garage.id}`)}
+                        className="w-full"
+                      >
+                        View Details <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </div>
+                  </Card>
+                </TiltCard>
               ))}
             </div>
           ) : (
