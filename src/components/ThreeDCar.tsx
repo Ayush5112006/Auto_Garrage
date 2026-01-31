@@ -8,7 +8,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 function Model(props: any) {
   // Switched to a standard Ferrari model from Three.js examples as a "real luxury car" 
   // pending a specific Rolls Royce URL.
-  const { scene } = useGLTF("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/ferrari.glb");
+  const { scene } = useGLTF("/models/ferrari.glb");
   return <primitive object={scene} {...props} />;
 }
 
