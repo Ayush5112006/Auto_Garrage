@@ -13,6 +13,7 @@ import Track from "./pages/Track";
 import GarageListing from "./pages/GarageListing";
 import GarageDetail from "./pages/GarageDetail";
 import Dashboard from "./pages/Dashboard";
+import Pricing from "./pages/Pricing";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DotPattern from "./components/ui/dot-pattern";
 import { MainLayout } from "./components/MainLayout";
@@ -41,7 +42,10 @@ export default function App() {
             <Route path="/track" element={<Track />} />
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/pricing" element={<Pricing />} />
           </Route>
 
           {/* Routes without Navbar/Transition if needed, or wrapped separately */}

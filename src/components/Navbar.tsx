@@ -14,6 +14,7 @@ const Navbar = (): JSX.Element => {
   const navLinks: NavLink[] = [
     { name: "Home", path: "/" },
     { name: "Garages", path: "/garages" },
+    { name: "Pricing", path: "/pricing" },
     { name: "Track Order", path: "/track" },
     { name: "About", path: "/about" },
     { name: "Contact", path: "/contact" },
@@ -40,9 +41,8 @@ const Navbar = (): JSX.Element => {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive(link.path) ? "text-primary" : "text-foreground"
-                }`}
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive(link.path) ? "text-primary" : "text-foreground"
+                  }`}
               >
                 {link.name}
               </Link>
@@ -66,9 +66,8 @@ const Navbar = (): JSX.Element => {
                 key={link.path}
                 to={link.path}
                 onClick={() => setIsOpen(false)}
-                className={`block py-3 text-sm font-medium transition-colors hover:text-primary ${
-                  isActive(link.path) ? "text-primary" : "text-foreground"
-                }`}
+                className={`block py-3 text-sm font-medium transition-colors hover:text-primary ${isActive(link.path) ? "text-primary" : "text-foreground"
+                  }`}
               >
                 {link.name}
               </Link>
