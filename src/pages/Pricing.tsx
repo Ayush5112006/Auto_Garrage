@@ -17,7 +17,7 @@ import {
 const servicePackages = [
     {
         name: "Standard Tune-Up",
-        price: 150,
+        price: "2,999",
         description: "Essential maintenance for reliable performance.",
         features: [
             "Engine Oil Change",
@@ -30,7 +30,7 @@ const servicePackages = [
     },
     {
         name: "Premium Service",
-        price: 350,
+        price: "7,999",
         description: "Comprehensive care for your vehicle's longevity.",
         features: [
             "All Standard Tune-Up Features",
@@ -44,7 +44,7 @@ const servicePackages = [
     },
     {
         name: "Ultimate Performance",
-        price: 600,
+        price: "15,999",
         description: "Complete overhaul for peak vehicle condition.",
         features: [
             "All Premium Service Features",
@@ -64,20 +64,20 @@ const Pricing = () => {
     const [urgency, setUrgency] = useState([0]);
 
     const calculateEstimate = () => {
-        let base = 50;
-        if (serviceLevel === "basic") base += 100;
-        if (serviceLevel === "intermediate") base += 250;
-        if (serviceLevel === "advanced") base += 500;
+        let base = 2000;
+        if (serviceLevel === "basic") base += 1500;
+        if (serviceLevel === "intermediate") base += 5000;
+        if (serviceLevel === "advanced") base += 10000;
 
         if (carType === "suv") base *= 1.2;
-        if (carType === "luxury") base *= 1.5;
+        if (carType === "luxury") base *= 1.8;
         if (carType === "truck") base *= 1.3;
 
         // Urgency multiplier (0-100slider)
         // 0 = standard, 100 = emergency (2x price)
         const urgencyMultiplier = 1 + (urgency[0] / 100);
 
-        return Math.round(base * urgencyMultiplier);
+        return Math.round(base * urgencyMultiplier).toLocaleString('en-IN');
     };
 
     return (
@@ -107,7 +107,7 @@ const Pricing = () => {
                                 <CardTitle className="text-xl text-white">{pkg.name}</CardTitle>
                                 <CardDescription>{pkg.description}</CardDescription>
                                 <div className="mt-4">
-                                    <span className="text-4xl font-bold text-white">${pkg.price}</span>
+                                    <span className="text-4xl font-bold text-white">₹{pkg.price}</span>
                                     <span className="text-gray-400">/visit</span>
                                 </div>
                             </CardHeader>
@@ -147,10 +147,10 @@ const Pricing = () => {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="sedan">Sedan / Coupe</SelectItem>
+                                            <SelectItem value="sedan">Sedan / Hitchback</SelectItem>
                                             <SelectItem value="suv">SUV / Crossover</SelectItem>
-                                            <SelectItem value="truck">Truck / Van</SelectItem>
-                                            <SelectItem value="luxury">Luxury / Exotic</SelectItem>
+                                            <SelectItem value="truck">Commercial / Van</SelectItem>
+                                            <SelectItem value="luxury">Luxury / Premium</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -181,7 +181,7 @@ const Pricing = () => {
                                         step={10}
                                         className="py-4"
                                     />
-                                    <p className="text-xs text-muted-foreground">Slide right for faster service (Rush fees apply)</p>
+                                    <p className="text-xs text-muted-foreground">Slide right for faster service (Fast-track fees apply)</p>
                                 </div>
                             </div>
                         </div>
@@ -191,10 +191,10 @@ const Pricing = () => {
                             <div className="text-center relative z-10">
                                 <p className="text-sm text-primary font-medium mb-2">ESTIMATED COST</p>
                                 <div className="text-5xl font-display text-white mb-2">
-                                    ${calculateEstimate()}
+                                    ₹{calculateEstimate()}
                                 </div>
                                 <p className="text-sm text-gray-400 max-w-[200px] mx-auto mb-8">
-                                    *This is a rough estimate. Final price varies based on specific parts and labor hours.
+                                    *Approximation only. Final INR price depends on spare parts and labor.
                                 </p>
                                 <Button size="lg" className="w-full animate-pulse-glow" asChild>
                                     <Link to="/contact">Get Official Quote</Link>
