@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { PageTransition } from "@/components/ui/page-transition";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 
 export const MainLayout = () => {
     return (
@@ -11,6 +12,7 @@ export const MainLayout = () => {
                     <Outlet />
                 </PageTransition>
             </div>
+            <WhatsAppButton />
         </div>
     );
 };

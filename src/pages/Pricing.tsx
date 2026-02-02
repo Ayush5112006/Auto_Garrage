@@ -61,20 +61,33 @@ const servicePackages = [
 const Pricing = () => {
     const [carType, setCarType] = useState("sedan");
     const [serviceLevel, setServiceLevel] = useState("basic");
+    const [fuelType, setFuelType] = useState("petrol");
+    const [vehicleAge, setVehicleAge] = useState("new");
     const [urgency, setUrgency] = useState([0]);
 
     const calculateEstimate = () => {
         let base = 2000;
+
+        // Base Service Cost
         if (serviceLevel === "basic") base += 1500;
         if (serviceLevel === "intermediate") base += 5000;
         if (serviceLevel === "advanced") base += 10000;
 
+        // Vehicle Type Multiplier
         if (carType === "suv") base *= 1.2;
         if (carType === "luxury") base *= 1.8;
         if (carType === "truck") base *= 1.3;
 
+        // Fuel Type Adjustments
+        if (fuelType === "diesel") base *= 1.1; // Complex engine parts
+        if (fuelType === "cng") base *= 1.15; // Safety checks
+        if (fuelType === "ev") base *= 1.25; // High voltage certified labor
+
+        // Vehicle Age Adjustments (Wear & Tear)
+        if (vehicleAge === "mid") base *= 1.15; // 5-10 years
+        if (vehicleAge === "old") base *= 1.30; // 10+ years
+
         // Urgency multiplier (0-100slider)
-        // 0 = standard, 100 = emergency (2x price)
         const urgencyMultiplier = 1 + (urgency[0] / 100);
 
         return Math.round(base * urgencyMultiplier).toLocaleString('en-IN');
@@ -167,6 +180,36 @@ const Pricing = () => {
                                             <SelectItem value="advanced">Full Restoration</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Fuel Type</Label>
+                                        <Select value={fuelType} onValueChange={setFuelType}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="petrol">Petrol</SelectItem>
+                                                <SelectItem value="diesel">Diesel</SelectItem>
+                                                <SelectItem value="cng">CNG</SelectItem>
+                                                <SelectItem value="ev">Electric (EV)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Vehicle Age</Label>
+                                        <Select value={vehicleAge} onValueChange={setVehicleAge}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="new">0-5 Years</SelectItem>
+                                                <SelectItem value="mid">5-10 Years</SelectItem>
+                                                <SelectItem value="old">10+ Years</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">

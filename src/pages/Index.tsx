@@ -4,6 +4,7 @@ import WhyChooseUs from "@/components/WhyChooseUs";
 import Testimonials from "@/components/Testimonials";
 import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
+import FAQ from "@/components/FAQ";
 
 const Index = () => {
   return (
@@ -12,6 +13,7 @@ const Index = () => {
       <Services />
       <WhyChooseUs />
       <Testimonials />
+      <FAQ />
       <CTASection />
       <Footer />
     </div>

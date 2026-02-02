@@ -13,6 +13,7 @@ import Track from "./pages/Track";
 import GarageListing from "./pages/GarageListing";
 import GarageDetail from "./pages/GarageDetail";
 import Dashboard from "./pages/Dashboard";
+import MechanicDashboard from "./pages/MechanicDashboard";
 import Pricing from "./pages/Pricing";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DotPattern from "./components/ui/dot-pattern";
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/mechanic-dashboard" element={<MechanicDashboard />} />
             <Route path="/pricing" element={<Pricing />} />
           </Route>
 
