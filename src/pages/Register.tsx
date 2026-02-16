@@ -1,15 +1,18 @@
 import { useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Phone, Lock, User } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Register() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const { register } = useAuth();
+  const { toast } = useToast();
 
   const [form, setForm] = useState({
     name: "",
@@ -27,19 +30,18 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await axios.post(
-        "http://localhost/backend/register.php",
-        form
-      );
-
-      alert(res.data.message); // Ideally replace with toast
-
-      if (res.data.status === true) {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Registration failed");
+      await register(form.name, form.email, form.password);
+      toast({
+        title: "Account created!",
+        description: "Your account is ready. You can now log in.",
+      });
+      navigate("/login");
+    } catch (error: any) {
+      toast({
+        title: "Registration failed",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

@@ -32,6 +32,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { CalendarDays, Clock, Car, User, Mail, Phone, CheckCircle, Truck, Home, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { createBooking } from "@/lib/bookings";
+import { useAuth } from "@/context/AuthContext";
 
 const services = [
   { id: "oil-change", name: "Oil Change", price: 2499 },
@@ -56,6 +58,7 @@ const timeSlots = [
 const Booking = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   type BookingFormValues = z.infer<typeof bookingSchema>;
 
@@ -77,42 +80,47 @@ const Booking = () => {
 
   const totalINR = subtotalINR + deliveryFee;
 
-  const onSubmit = (data: BookingFormValues) => {
+  const onSubmit = async (data: BookingFormValues) => {
     // Generate Tracking ID
     const trackingId = `GAR-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
     
-    // Save booking to localStorage
-    const booking = {
-      trackingId,
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      vehicle: data.vehicle,
-      services: watchedServices.map(id => {
-        const s = services.find(x => x.id === id);
-        return { id, name: s?.name, price: s?.price };
-      }),
-      date: data.date?.toISOString().split('T')[0],
-      time: data.selectedTime,
-      deliveryOption: data.deliveryOption,
-      deliveryFee: deliveryFee,
-      homeAddress: data.homeAddress || '',
-      subtotal: subtotalINR,
-      total: totalINR,
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-    };
-    
-    const existingBookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-    existingBookings.push(booking);
-    localStorage.setItem('bookings', JSON.stringify(existingBookings));
-    localStorage.setItem('lastTrackingId', trackingId);
-    
-    setIsSubmitted(true);
-    toast({
-      title: "Booking Confirmed!",
-      description: `Tracking ID: ${trackingId}`,
+    const bookingServices = watchedServices.map((id) => {
+      const s = services.find((x) => x.id === id);
+      return { id, name: s?.name, price: s?.price };
     });
+
+    try {
+      await createBooking({
+        trackingId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        vehicle: data.vehicle,
+        services: bookingServices,
+        date: data.date?.toISOString().split("T")[0] || "",
+        time: data.selectedTime,
+        deliveryOption: data.deliveryOption,
+        deliveryFee: deliveryFee,
+        homeAddress: data.homeAddress || "",
+        subtotal: subtotalINR,
+        total: totalINR,
+        status: "Pending",
+        userId: user?.id,
+      });
+
+      localStorage.setItem("lastTrackingId", trackingId);
+      setIsSubmitted(true);
+      toast({
+        title: "Booking Confirmed!",
+        description: `Tracking ID: ${trackingId}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Booking failed",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
 

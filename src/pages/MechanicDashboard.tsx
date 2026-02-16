@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -17,94 +17,70 @@ import {
     Settings,
     Calendar
 } from "lucide-react";
-
-interface WorkOrder {
-    id: string;
-    vehicleInfo: string;
-    customerName: string;
-    serviceType: string;
-    status: "pending" | "in-progress" | "completed" | "waiting-parts";
-    priority: "low" | "medium" | "high";
-    estimatedTime: string;
-    assignedBay: number;
-}
-
-interface InventoryItem {
-    id: string;
-    partName: string;
-    quantity: number;
-    minStock: number;
-    status: "in-stock" | "low-stock" | "out-of-stock";
-}
+import { useAuth } from "@/context/AuthContext";
+import {
+    getInventoryItems,
+    getStaffProfile,
+    getWorkOrdersForStaff,
+    type InventoryItem,
+    type StaffProfile,
+    type WorkOrder,
+} from "@/lib/staff";
 
 const MechanicDashboard = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState<any>(null);
-
-    // Sample work orders data
-    const [workOrders] = useState<WorkOrder[]>([
-        {
-            id: "WO-001",
-            vehicleInfo: "Honda Civic 2020",
-            customerName: "Rajesh Kumar",
-            serviceType: "Oil Change + Brake Inspection",
-            status: "in-progress",
-            priority: "high",
-            estimatedTime: "2h",
-            assignedBay: 3
-        },
-        {
-            id: "WO-002",
-            vehicleInfo: "Toyota Fortuner 2019",
-            customerName: "Priya Sharma",
-            serviceType: "Full Service",
-            status: "pending",
-            priority: "medium",
-            estimatedTime: "4h",
-            assignedBay: 1
-        },
-        {
-            id: "WO-003",
-            vehicleInfo: "Maruti Swift 2021",
-            customerName: "Amit Patel",
-            serviceType: "AC Repair",
-            status: "waiting-parts",
-            priority: "low",
-            estimatedTime: "3h",
-            assignedBay: 5
-        }
-    ]);
-
-    // Sample inventory data
-    const [inventory] = useState<InventoryItem[]>([
-        { id: "INV-001", partName: "Engine Oil (5W-30)", quantity: 45, minStock: 20, status: "in-stock" },
-        { id: "INV-002", partName: "Brake Pads", quantity: 8, minStock: 10, status: "low-stock" },
-        { id: "INV-003", partName: "Air Filter", quantity: 0, minStock: 15, status: "out-of-stock" },
-        { id: "INV-004", partName: "Spark Plugs", quantity: 32, minStock: 20, status: "in-stock" }
-    ]);
+    const { user, loading: authLoading, logout } = useAuth();
+    const [profile, setProfile] = useState<StaffProfile | null>(null);
+    const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+    const [inventory, setInventory] = useState<InventoryItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        if (!storedUser) {
+        if (authLoading) {
+            return;
+        }
+
+        if (!user) {
             navigate("/login");
             return;
         }
-        try {
-            setUser(JSON.parse(storedUser));
-        } catch (error) {
-            console.error("Error loading user data:", error);
-            navigate("/login");
-        }
-    }, [navigate]);
+
+        let isMounted = true;
+        setLoading(true);
+        setErrorMessage("");
+
+        Promise.all([
+            getStaffProfile(user.id),
+            getWorkOrdersForStaff(user.id),
+            getInventoryItems(),
+        ])
+            .then(([staffProfile, orders, stock]) => {
+                if (!isMounted) return;
+                setProfile(staffProfile);
+                setWorkOrders(orders);
+                setInventory(stock);
+            })
+            .catch((error: any) => {
+                if (!isMounted) return;
+                setErrorMessage(error?.message || "Unable to load mechanic data.");
+            })
+            .finally(() => {
+                if (!isMounted) return;
+                setLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [authLoading, navigate, user]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
-        navigate("/");
+        logout();
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
+    const getStatusColor = (status?: string | null) => {
+        switch ((status || "").toLowerCase()) {
             case "in-progress":
                 return "bg-blue-100 text-blue-800";
             case "pending":
@@ -118,8 +94,8 @@ const MechanicDashboard = () => {
         }
     };
 
-    const getPriorityColor = (priority: string) => {
-        switch (priority) {
+    const getPriorityColor = (priority?: string | null) => {
+        switch ((priority || "").toLowerCase()) {
             case "high":
                 return "bg-red-100 text-red-800";
             case "medium":
@@ -129,6 +105,20 @@ const MechanicDashboard = () => {
             default:
                 return "bg-gray-100 text-gray-800";
         }
+    };
+
+    const formatStatus = (value?: string | null) => {
+        if (!value) return "Pending";
+        return value
+            .replace(/[_-]/g, " ")
+            .toLowerCase()
+            .replace(/\b\w/g, (m) => m.toUpperCase());
+    };
+
+    const getInventoryStatus = (item: InventoryItem) => {
+        if (item.quantity <= 0) return "out-of-stock";
+        if (item.quantity <= item.min_stock) return "low-stock";
+        return "in-stock";
     };
 
     const getInventoryColor = (status: string) => {
@@ -157,12 +147,19 @@ const MechanicDashboard = () => {
         );
     }
 
-    const stats = [
-        { label: "Active Jobs", value: "12", icon: Wrench, color: "text-blue-600" },
-        { label: "Completed Today", value: "8", icon: CheckCircle2, color: "text-green-600" },
-        { label: "Pending", value: "5", icon: Clock, color: "text-yellow-600" },
-        { label: "Low Stock Items", value: "3", icon: AlertCircle, color: "text-red-600" }
-    ];
+    const stats = useMemo(() => {
+        const completedToday = workOrders.filter((order) => (order.status || "").toLowerCase() === "completed").length;
+        const pending = workOrders.filter((order) => (order.status || "").toLowerCase() === "pending").length;
+        const active = workOrders.filter((order) => (order.status || "").toLowerCase() === "in-progress").length;
+        const lowStock = inventory.filter((item) => item.quantity <= item.min_stock).length;
+
+        return [
+            { label: "Active Jobs", value: `${active}`, icon: Wrench, color: "text-blue-600" },
+            { label: "Completed Today", value: `${completedToday}`, icon: CheckCircle2, color: "text-green-600" },
+            { label: "Pending", value: `${pending}`, icon: Clock, color: "text-yellow-600" },
+            { label: "Low Stock Items", value: `${lowStock}`, icon: AlertCircle, color: "text-red-600" },
+        ];
+    }, [inventory, workOrders]);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -176,7 +173,9 @@ const MechanicDashboard = () => {
                                     <Wrench className="w-10 h-10 text-primary" />
                                     Mechanic Dashboard
                                 </h1>
-                                <p className="text-muted-foreground">Welcome back, {user.name}! Here's your workshop overview.</p>
+                                <p className="text-muted-foreground">
+                                    Welcome back, {profile?.full_name || profile?.name || user.email}! Here's your workshop overview.
+                                </p>
                             </div>
                             <Button
                                 onClick={handleLogout}
@@ -188,6 +187,12 @@ const MechanicDashboard = () => {
                             </Button>
                         </div>
                     </div>
+
+                    {errorMessage ? (
+                        <div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                            {errorMessage}
+                        </div>
+                    ) : null}
 
                     {/* Stats Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -227,24 +232,33 @@ const MechanicDashboard = () => {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        {workOrders.map((order) => (
+                                        {loading ? (
+                                            <p className="text-sm text-muted-foreground">Loading work orders...</p>
+                                        ) : workOrders.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No work orders assigned.</p>
+                                        ) : (
+                                            workOrders.map((order) => (
                                             <Card key={order.id} className="border-l-4 border-l-primary">
                                                 <CardContent className="p-4">
                                                     <div className="flex items-start justify-between mb-3">
                                                         <div>
                                                             <p className="font-mono font-semibold text-primary">{order.id}</p>
-                                                            <p className="font-semibold text-lg">{order.vehicleInfo}</p>
+                                                            <p className="font-semibold text-lg">
+                                                                {[order.vehicle_brand, order.vehicle_model, order.vehicle_no]
+                                                                    .filter(Boolean)
+                                                                    .join(" ") || "Vehicle"}
+                                                            </p>
                                                             <p className="text-sm text-muted-foreground flex items-center gap-1">
                                                                 <Users className="w-3 h-3" />
-                                                                {order.customerName}
+                                                                {order.customer_name || "Customer"}
                                                             </p>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <Badge className={getStatusColor(order.status)}>
-                                                                {order.status.replace("-", " ")}
+                                                                {formatStatus(order.status)}
                                                             </Badge>
                                                             <Badge className={getPriorityColor(order.priority)}>
-                                                                {order.priority}
+                                                                {order.priority ? formatStatus(order.priority) : "Medium"}
                                                             </Badge>
                                                         </div>
                                                     </div>
@@ -252,18 +266,18 @@ const MechanicDashboard = () => {
                                                     <div className="grid grid-cols-3 gap-4 text-sm">
                                                         <div>
                                                             <p className="text-muted-foreground">Service</p>
-                                                            <p className="font-semibold">{order.serviceType}</p>
+                                                            <p className="font-semibold">{order.service_type || "Service"}</p>
                                                         </div>
                                                         <div>
                                                             <p className="text-muted-foreground">Est. Time</p>
                                                             <p className="font-semibold flex items-center gap-1">
                                                                 <Clock className="w-3 h-3" />
-                                                                {order.estimatedTime}
+                                                                {order.estimated_time || "-"}
                                                             </p>
                                                         </div>
                                                         <div>
                                                             <p className="text-muted-foreground">Bay</p>
-                                                            <p className="font-semibold">Bay #{order.assignedBay}</p>
+                                                            <p className="font-semibold">Bay #{order.assigned_bay ?? "-"}</p>
                                                         </div>
                                                     </div>
 
@@ -278,6 +292,7 @@ const MechanicDashboard = () => {
                                                 </CardContent>
                                             </Card>
                                         ))}
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -296,28 +311,38 @@ const MechanicDashboard = () => {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3">
-                                        {inventory.map((item) => (
+                                        {loading ? (
+                                            <p className="text-sm text-muted-foreground">Loading inventory...</p>
+                                        ) : inventory.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No inventory items found.</p>
+                                        ) : (
+                                            inventory.map((item) => {
+                                                const status = getInventoryStatus(item);
+                                                const ratio = item.min_stock > 0 ? (item.quantity / item.min_stock) * 100 : 0;
+                                                return (
                                             <div key={item.id} className="border rounded-lg p-3">
                                                 <div className="flex items-start justify-between mb-2">
-                                                    <p className="font-semibold text-sm">{item.partName}</p>
-                                                    <Badge className={getInventoryColor(item.status)} variant="secondary">
-                                                        {item.status.replace("-", " ")}
+                                                    <p className="font-semibold text-sm">{item.part_name}</p>
+                                                    <Badge className={getInventoryColor(status)} variant="secondary">
+                                                        {formatStatus(status)}
                                                     </Badge>
                                                 </div>
                                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                                     <span>Qty: {item.quantity}</span>
-                                                    <span>Min: {item.minStock}</span>
+                                                    <span>Min: {item.min_stock}</span>
                                                 </div>
                                                 <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                                                     <div
-                                                        className={`h-2 rounded-full ${item.quantity >= item.minStock ? "bg-green-500" :
+                                                        className={`h-2 rounded-full ${item.quantity >= item.min_stock ? "bg-green-500" :
                                                                 item.quantity > 0 ? "bg-yellow-500" : "bg-red-500"
                                                             }`}
-                                                        style={{ width: `${Math.min((item.quantity / item.minStock) * 100, 100)}%` }}
+                                                        style={{ width: `${Math.min(ratio, 100)}%` }}
                                                     />
                                                 </div>
                                             </div>
-                                        ))}
+                                        );
+                                            })
+                                        )}
                                     </div>
                                     <Button variant="outline" className="w-full mt-4 gap-2">
                                         <Package className="w-4 h-4" />

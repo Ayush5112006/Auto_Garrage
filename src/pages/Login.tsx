@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -16,40 +16,26 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost/php-api/login.php", {
-        email,
-        password,
+      await login(email, password);
+      toast({
+        title: "Login Successful!",
+        description: "Welcome back! Redirecting to dashboard...",
       });
 
-      if (res.data.status === true) {
-        localStorage.setItem("authToken", res.data.token || "");
-        localStorage.setItem("user", JSON.stringify(res.data.user));
-
-        toast({
-          title: "Login Successful!",
-          description: "Welcome back! Redirecting to dashboard...",
-        });
-
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 1000);
-      } else {
-        toast({
-          title: "Login Failed",
-          description: res.data.message || "Invalid credentials",
-          variant: "destructive",
-        });
-      }
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1000);
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: error.response?.data?.message || "Something went wrong",
+        title: "Login Failed",
+        description: error?.message || "Invalid credentials",
         variant: "destructive",
       });
     } finally {

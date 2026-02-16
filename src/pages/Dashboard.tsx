@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, Car, LogOut, Plus, Settings } from "lucide-react";
 import { TiltCard } from "@/components/ui/tilt-card";
+import { getBookingsForUser, type BookingRecord } from "@/lib/bookings";
+import { useAuth } from "@/context/AuthContext";
 
 interface User {
   id?: number;
@@ -13,54 +16,45 @@ interface User {
   email: string;
 }
 
-interface Booking {
-  trackingId: string;
-  name: string;
-  email: string;
-  phone: string;
-  vehicle: string;
-  services: Array<{ id: string; name?: string; price?: number }>;
-  date: string;
-  time: string;
-  total: number;
-  status: string;
-  createdAt: string;
-}
+type Booking = BookingRecord;
 
 const Dashboard = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading, logout } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem("user");
-    const userBookings = localStorage.getItem("bookings");
-
-    if (!storedUser) {
+    if (!loading && !user) {
       navigate("/login");
       return;
     }
 
-    try {
-      setUser(JSON.parse(storedUser));
-      if (userBookings) {
-        const allBookings = JSON.parse(userBookings);
-        const userSpecificBookings = allBookings.filter(
-          (b: Booking) => b.email === JSON.parse(storedUser).email
-        );
-        setBookings(userSpecificBookings);
-      }
-    } catch (error) {
-      console.error("Error loading user data:", error);
-      navigate("/login");
+    if (loading || !user) {
+      return;
     }
-  }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    navigate("/");
+    let isMounted = true;
+
+    const loadBookings = async () => {
+      try {
+        const rows = await getBookingsForUser({ userId: user.id, email: user.email });
+        if (isMounted) {
+          setBookings(rows);
+        }
+      } catch (error) {
+        console.error("Error loading bookings:", error);
+      }
+    };
+
+    loadBookings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate, user]);
+
+  const handleLogout = async () => {
+    await logout();
   };
 
   const getStatusColor = (status: string) => {
@@ -78,7 +72,7 @@ const Dashboard = () => {
     }
   };
 
-  if (!user) {
+    if (!user) {
     return (
       <div className="min-h-screen">
         <Navbar />

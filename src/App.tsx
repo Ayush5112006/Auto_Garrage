@@ -13,7 +13,14 @@ import Track from "./pages/Track";
 import GarageListing from "./pages/GarageListing";
 import GarageDetail from "./pages/GarageDetail";
 import Dashboard from "./pages/Dashboard";
-import MechanicDashboard from "./pages/MechanicDashboard";
+import MechanicLogin from "./mechanic/MechanicLogin";
+import MechanicLayout from "./mechanic/MechanicLayout";
+import StaffProtectedRoute from "./mechanic/StaffProtectedRoute";
+import MechanicDashboard from "./mechanic/MechanicDashboard";
+import WorkOrders from "./mechanic/WorkOrders";
+import WorkOrderDetails from "./mechanic/WorkOrderDetail";
+import MechanicProfile from "./mechanic/MechanicProfile";
+import AssignWorkOrders from "./mechanic/AssignWorkOrders";
 import Pricing from "./pages/Pricing";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DotPattern from "./components/ui/dot-pattern";
@@ -46,13 +53,22 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/mechanic-dashboard" element={<MechanicDashboard />} />
             <Route path="/pricing" element={<Pricing />} />
           </Route>
 
           {/* Routes without Navbar/Transition if needed, or wrapped separately */}
           <Route path="/admin" element={<Admin />} />
           <Route path="/staff" element={<Staff />} />
+          <Route path="/mechanic/login" element={<MechanicLogin />} />
+          <Route element={<StaffProtectedRoute />}>
+            <Route path="/mechanic" element={<MechanicLayout />}>
+              <Route path="dashboard" element={<MechanicDashboard />} />
+              <Route path="work-orders" element={<WorkOrders />} />
+              <Route path="work-orders/:id" element={<WorkOrderDetails />} />
+              <Route path="profile" element={<MechanicProfile />} />
+              <Route path="assign" element={<AssignWorkOrders />} />
+            </Route>
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
