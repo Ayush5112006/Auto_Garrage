@@ -33,9 +33,9 @@ export default function Register() {
       await register(form.name, form.email, form.password);
       toast({
         title: "Account created!",
-        description: "Your account is ready. You can now log in.",
+        description: "Your account is ready. Redirecting to dashboard...",
       });
-      navigate("/login");
+      navigate("/dashboard");
     } catch (error: any) {
       toast({
         title: "Registration failed",
@@ -138,13 +138,13 @@ export default function Register() {
             </form>
 
             <div className="mt-6 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
+              Already registered?{" "}
               <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={() => navigate("/dashboard")}
                 className="text-primary hover:underline font-semibold"
               >
-                Sign In
+                Go to Dashboard
               </button>
             </div>
           </CardContent>

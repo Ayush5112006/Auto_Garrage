@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabaseClient";
+import { api } from "@/lib/api-client";
 
-type User = { id: string; name?: string; email: string } | null;
+type UserRole = "admin" | "user";
+type User = { id: string; name?: string; email: string; role?: UserRole } | null;
 
 const AuthContext = createContext<{
   user: User;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, redirectTo?: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }>({
@@ -23,87 +24,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const mapUser = useMemo(
-    () => (supabaseUser: { id: string; email?: string | null; user_metadata?: any } | null) => {
-      if (!supabaseUser || !supabaseUser.email) return null;
-      return {
-        id: supabaseUser.id,
-        email: supabaseUser.email,
-        name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name,
-      };
-    },
-    []
-  );
-
-  const ensureProfile = async (supabaseUser: { id: string; user_metadata?: any } | null) => {
-    if (!supabaseUser) return;
-    const fullName = supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || null;
-
-    await supabase
-      .from("profiles")
-      .upsert({
-        id: supabaseUser.id,
-        full_name: fullName,
-        name: fullName,
-      }, { onConflict: "id" });
-  };
-
   useEffect(() => {
     let mounted = true;
 
-    const loadSession = async () => {
-      const { data } = await supabase.auth.getUser();
+    const loadUser = async () => {
+      const { data, error } = await api.getCurrentUser();
       if (mounted) {
-        await ensureProfile(data.user || null);
-        setUser(mapUser(data.user));
+        if (!error && data?.user) {
+          setUser(data.user);
+        }
         setLoading(false);
       }
     };
 
-    loadSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        void ensureProfile(session?.user || null);
-        setUser(mapUser(session?.user || null));
-        setLoading(false);
-      }
-    });
+    loadUser();
 
     return () => {
       mounted = false;
-      authListener.subscription.unsubscribe();
     };
-  }, [mapUser]);
+  }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const login = async (email: string, password: string, redirectTo = '/') => {
+    const { data, error } = await api.login(email, password);
     if (error) {
-      throw error;
+      throw new Error(error);
     }
-    await ensureProfile(data.user);
-    setUser(mapUser(data.user));
-    navigate('/');
+    if (data?.user) {
+      setUser(data.user);
+      navigate(redirectTo);
+    }
   };
 
   const register = async (name: string, email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name },
-      },
-    });
+    const { data, error } = await api.register(name, email, password);
     if (error) {
-      throw error;
+      throw new Error(error);
     }
-    await ensureProfile(data.user);
-    setUser(mapUser(data.user));
-    navigate('/');
+    if (data?.user) {
+      setUser(data.user);
+      navigate('/');
+    }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    await api.logout();
     setUser(null);
     navigate('/');
   };

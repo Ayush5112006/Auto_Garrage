@@ -1,20 +1,43 @@
 
 import { Canvas } from "@react-three/fiber";
 import { useGLTF, Stage, PresentationControls, Html } from "@react-three/drei";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import * as THREE from "three";
 
-function Model(props: any) {
-  // Switched to a standard Ferrari model from Three.js examples as a "real luxury car" 
-  // pending a specific Rolls Royce URL.
-  // Switched to a standard Ferrari model from Three.js examples as a "real luxury car" 
-  // pending a specific Rolls Royce URL.
-  const { scene } = useGLTF("/models/ferrari.glb");
-  return <primitive object={scene} {...props} />;
+interface ModelProps {
+  modelPath: string;
+  color?: string;
 }
 
-export default function ThreeDCar() {
+function Model({ modelPath, color }: ModelProps) {
+  const { scene } = useGLTF(modelPath);
+
+  useEffect(() => {
+    if (color) {
+      // Apply color to all meshes in the scene
+      scene.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          // Clone material to avoid affecting other instances
+          child.material = child.material.clone();
+          // Set the color
+          child.material.color = new THREE.Color(color);
+          child.material.needsUpdate = true;
+        }
+      });
+    }
+  }, [scene, color]);
+
+  return <primitive object={scene.clone()} />;
+}
+
+interface ThreeDCarProps {
+  modelPath?: string;
+  color?: string;
+}
+
+export default function ThreeDCar({ modelPath = "/models/ferrari.glb", color }: ThreeDCarProps) {
   return (
     <div className="w-full h-full min-h-[400px] relative">
       <ErrorBoundary>
@@ -29,7 +52,7 @@ export default function ThreeDCar() {
           }>
             <PresentationControls speed={1.5} global zoom={0.5} polar={[-0.1, Math.PI / 4]}>
               <Stage environment="city" intensity={0.6} shadows={false}>
-                <Model />
+                <Model modelPath={modelPath} color={color} />
               </Stage>
             </PresentationControls>
           </Suspense>

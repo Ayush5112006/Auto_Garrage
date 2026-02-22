@@ -30,7 +30,7 @@ const Staff = () => {
     }
 
     if (!user) {
-      navigate("/login");
+      navigate("/register");
       return;
     }
 

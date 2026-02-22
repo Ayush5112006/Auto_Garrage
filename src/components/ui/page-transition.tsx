@@ -32,7 +32,7 @@ export function PageTransition({ children, className }: PageTransitionProps) {
             ref={containerRef}
             onAnimationEnd={onAnimationEnd}
             className={cn(
-                "min-h-screen w-full animate-in flex flex-col",
+                "w-full animate-in flex flex-col",
                 transitionStage === "fadeIn" ? "animate-in fade-in zoom-in-95 duration-500" : "animate-out fade-out zoom-out-95 duration-300",
                 className
             )}

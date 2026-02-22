@@ -1,335 +1,773 @@
-import { useState } from "react";
-import { Navbar } from "@/components/Navbar";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart3, Users, Calendar, DollarSign, LogOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api-client";
+import { Building2, Mail, MapPin, Phone, Plus, Search, UserCog, Users } from "lucide-react";
 
-interface Booking {
-  id: number;
-  customer: string;
-  service: string;
-  date: string;
-  status: string;
-}
+type AdminOption =
+  | "manage-garage"
+  | "garage-wise-staff"
+  | "manage-customer"
+  | "manage-all-users"
+  | "garage-contact";
 
-interface StaffMember {
-  id: number;
+type Garage = {
+  id: string;
   name: string;
-  role: string;
+  contactPhone: string;
+  addressState: string;
+  addressCountry: string;
+  mechanicsCount: number;
+  mapUrl: string;
+  openTime: string;
+  description: string;
+  createdAt: string;
+};
+
+type Booking = {
+  trackingId: string;
+  name: string;
   email: string;
+  phone: string;
+  vehicle: string;
+  date: string;
+  time: string;
+  total: number;
   status: string;
-}
+  createdAt: string;
+  userId: string;
+};
+
+type CustomerSummary = {
+  email: string;
+  name: string;
+  phone: string;
+  totalBookings: number;
+  totalSpent: number;
+  lastBookingAt: string;
+};
+
+const navOptions: Array<{ key: AdminOption; label: string }> = [
+  { key: "manage-garage", label: "Manage Garage" },
+  { key: "garage-wise-staff", label: "Garage Wise Staff" },
+  { key: "manage-customer", label: "Manage User/Customer" },
+  { key: "manage-all-users", label: "Manage All Users" },
+  { key: "garage-contact", label: "Contact for All Garage" },
+];
+
+const bookingStatuses = ["pending", "confirmed", "in-progress", "completed", "cancelled"];
+const DEFAULT_ADMIN_EMAIL = (import.meta.env.VITE_DEFAULT_ADMIN_EMAIL || "admin@garage.com").toLowerCase();
+
+const normalizeGarage = (raw: Record<string, any>): Garage => ({
+  id: String(raw.id ?? ""),
+  name: String(raw.name ?? ""),
+  contactPhone: String(raw.contactPhone ?? raw.contact_phone ?? ""),
+  addressState: String(raw.addressState ?? raw.address_state ?? ""),
+  addressCountry: String(raw.addressCountry ?? raw.address_country ?? ""),
+  mechanicsCount: Number(raw.mechanicsCount ?? raw.mechanics_count ?? 0) || 0,
+  mapUrl: String(raw.mapUrl ?? raw.map_url ?? ""),
+  openTime: String(raw.openTime ?? raw.open_time ?? ""),
+  description: String(raw.description ?? ""),
+  createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+});
+
+const normalizeBooking = (raw: Record<string, any>): Booking => ({
+  trackingId: String(raw.trackingId ?? raw.tracking_id ?? ""),
+  name: String(raw.name ?? ""),
+  email: String(raw.email ?? ""),
+  phone: String(raw.phone ?? ""),
+  vehicle: String(raw.vehicle ?? ""),
+  date: String(raw.date ?? raw.service_date ?? ""),
+  time: String(raw.time ?? ""),
+  total: Number(raw.total ?? 0) || 0,
+  status: String(raw.status ?? "pending"),
+  createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+  userId: String(raw.userId ?? raw.user_id ?? ""),
+});
+
+const toDateLabel = (value: string) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+};
 
 const Admin = () => {
+  const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
-  const [stats] = useState({
-    totalBookings: 127,
-    totalUsers: 256,
-    totalRevenue: "$45,320",
-    pendingServices: 12,
-  });
 
-  const [bookings, setBookings] = useState<Booking[]>([
-    { id: 1, customer: "John Doe", service: "Oil Change", date: "2025-01-20", status: "Completed" },
-    { id: 2, customer: "Jane Smith", service: "Brake Service", date: "2025-01-21", status: "Pending" },
-    { id: 3, customer: "Bob Wilson", service: "Engine Repair", date: "2025-01-22", status: "In Progress" },
-  ]);
+  const [activeOption, setActiveOption] = useState<AdminOption>("manage-garage");
+  const [garages, setGarages] = useState<Garage[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [savingGarageId, setSavingGarageId] = useState<string | null>(null);
+  const [deletingGarageId, setDeletingGarageId] = useState<string | null>(null);
+  const [updatingTrackingId, setUpdatingTrackingId] = useState<string | null>(null);
+  const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string>("");
 
-  const [staff, setStaff] = useState<StaffMember[]>([
-    { id: 1, name: "Mike Johnson", role: "Senior Mechanic", email: "mike@garage.com", status: "Active" },
-    { id: 2, name: "Sarah Lee", role: "Technician", email: "sarah@garage.com", status: "Active" },
-    { id: 3, name: "Tom Brown", role: "Apprentice", email: "tom@garage.com", status: "On Leave" },
-  ]);
+  const [garageEdits, setGarageEdits] = useState<Record<string, Partial<Garage>>>({});
+  const [contactEdits, setContactEdits] = useState<Record<string, Partial<Garage>>>({});
+  const isAdminUser =
+    !!user && (user.role === "admin" || user.email?.toLowerCase() === DEFAULT_ADMIN_EMAIL);
 
-  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
-  const [openBookingDialog, setOpenBookingDialog] = useState(false);
-  const [openStaffDialog, setOpenStaffDialog] = useState(false);
+  const loadAdminData = async () => {
+    setLoading(true);
 
-  const handleEditBooking = (booking: Booking) => {
-    setEditingBooking(booking);
-    setOpenBookingDialog(true);
-  };
+    const [garageResult, bookingResult] = await Promise.all([api.getGarages(), api.getAdminBookings()]);
 
-  const handleSaveBooking = () => {
-    if (editingBooking) {
-      setBookings(bookings.map(b => b.id === editingBooking.id ? editingBooking : b));
-      setOpenBookingDialog(false);
-      setEditingBooking(null);
+    const nextGarages = Array.isArray(garageResult.data)
+      ? garageResult.data.map((row) => normalizeGarage(row as Record<string, any>))
+      : [];
+
+    const nextBookings = Array.isArray(bookingResult.data)
+      ? bookingResult.data.map((row) => normalizeBooking(row as Record<string, any>))
+      : [];
+
+    setGarages(nextGarages);
+    setBookings(nextBookings);
+
+    if (nextBookings.length > 0 && !selectedCustomerEmail) {
+      setSelectedCustomerEmail(nextBookings[0].email);
     }
-  };
 
-  const handleEditStaff = (staffMember: StaffMember) => {
-    setEditingStaff(staffMember);
-    setOpenStaffDialog(true);
-  };
-
-  const handleSaveStaff = () => {
-    if (editingStaff) {
-      setStaff(staff.map(s => s.id === editingStaff.id ? editingStaff : s));
-      setOpenStaffDialog(false);
-      setEditingStaff(null);
+    if (garageResult.error || bookingResult.error) {
+      toast({
+        title: "Some data could not load",
+        description: garageResult.error || bookingResult.error || "Please refresh and try again.",
+        variant: "destructive",
+      });
     }
+
+    setLoading(false);
   };
 
-  const handleLogout = () => {
-    navigate("/login");
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user || !isAdminUser) {
+      navigate("/admin/login", { replace: true });
+      return;
+    }
+
+    loadAdminData();
+  }, [authLoading, user, isAdminUser, navigate]);
+
+  if (authLoading || !user || !isAdminUser) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <p className="text-sm text-muted-foreground">Checking admin session...</p>
+      </div>
+    );
+  }
+
+  const title = useMemo(() => {
+    switch (activeOption) {
+      case "manage-garage":
+        return "Manage Garage";
+      case "garage-wise-staff":
+        return "Garage Wise Staff";
+      case "manage-customer":
+        return "Manage User / Customer";
+      case "manage-all-users":
+        return "Manage All Users";
+      case "garage-contact":
+        return "Contact for All Garage";
+      default:
+        return "Admin";
+    }
+  }, [activeOption]);
+
+  const filteredGarages = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return garages;
+
+    return garages.filter((garage) => {
+      const stack = [garage.name, garage.addressState, garage.addressCountry, garage.contactPhone]
+        .join(" ")
+        .toLowerCase();
+      return stack.includes(query);
+    });
+  }, [garages, search]);
+
+  const filteredBookings = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return bookings;
+
+    return bookings.filter((booking) => {
+      const stack = [
+        booking.trackingId,
+        booking.name,
+        booking.email,
+        booking.phone,
+        booking.vehicle,
+        booking.status,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return stack.includes(query);
+    });
+  }, [bookings, search]);
+
+  const totalStaff = useMemo(
+    () => garages.reduce((sum, garage) => sum + (garage.mechanicsCount || 0), 0),
+    [garages]
+  );
+
+  const customerSummaries = useMemo(() => {
+    const map = new Map<string, CustomerSummary>();
+
+    for (const booking of filteredBookings) {
+      const key = booking.email || `unknown-${booking.trackingId}`;
+      const existing = map.get(key);
+
+      if (!existing) {
+        map.set(key, {
+          email: booking.email || "unknown@example.com",
+          name: booking.name || "Unknown Customer",
+          phone: booking.phone || "",
+          totalBookings: 1,
+          totalSpent: booking.total || 0,
+          lastBookingAt: booking.createdAt || booking.date,
+        });
+        continue;
+      }
+
+      existing.totalBookings += 1;
+      existing.totalSpent += booking.total || 0;
+
+      const currentDate = new Date(existing.lastBookingAt).getTime();
+      const nextDate = new Date(booking.createdAt || booking.date).getTime();
+      if (!Number.isNaN(nextDate) && (Number.isNaN(currentDate) || nextDate > currentDate)) {
+        existing.lastBookingAt = booking.createdAt || booking.date;
+      }
+
+      if (!existing.phone && booking.phone) {
+        existing.phone = booking.phone;
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalBookings - a.totalBookings);
+  }, [filteredBookings]);
+
+  const selectedCustomerBookings = useMemo(
+    () => filteredBookings.filter((booking) => booking.email === selectedCustomerEmail),
+    [filteredBookings, selectedCustomerEmail]
+  );
+
+  const usersList = useMemo(() => {
+    const adminRow = {
+      id: user?.id || "admin-local",
+      name: user?.name || "Admin",
+      email: user?.email || "admin@garage.com",
+      role: "admin",
+      source: "Auth",
+    };
+
+    const customerRows = customerSummaries.map((item, index) => ({
+      id: `customer-${index + 1}`,
+      name: item.name,
+      email: item.email,
+      role: "customer",
+      source: `${item.totalBookings} bookings`,
+    }));
+
+    return [adminRow, ...customerRows];
+  }, [customerSummaries, user]);
+
+  const updateGarageEditField = (
+    id: string,
+    field: keyof Garage,
+    value: string | number,
+    mode: "garage" | "contact"
+  ) => {
+    if (mode === "garage") {
+      setGarageEdits((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          [field]: value,
+        },
+      }));
+      return;
+    }
+
+    setContactEdits((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value,
+      },
+    }));
+  };
+
+  const saveGaragePatch = async (
+    id: string,
+    patch: Record<string, unknown>,
+    successTitle: string,
+    successDescription: string
+  ) => {
+    setSavingGarageId(id);
+    const { error } = await api.updateGarageWithFallback(id, patch);
+
+    if (error) {
+      toast({
+        title: "Save failed",
+        description: error,
+        variant: "destructive",
+      });
+      setSavingGarageId(null);
+      return;
+    }
+
+    setGarages((prev) =>
+      prev.map((garage) => (garage.id === id ? { ...garage, ...(patch as Partial<Garage>) } : garage))
+    );
+
+    toast({
+      title: successTitle,
+      description: successDescription,
+    });
+
+    setSavingGarageId(null);
+  };
+
+  const deleteGarage = async (id: string) => {
+    const confirmed = window.confirm("Delete this garage?");
+    if (!confirmed) return;
+
+    setDeletingGarageId(id);
+    const { error } = await api.deleteGarageWithFallback(id);
+
+    if (error) {
+      toast({
+        title: "Delete failed",
+        description: error,
+        variant: "destructive",
+      });
+      setDeletingGarageId(null);
+      return;
+    }
+
+    setGarages((prev) => prev.filter((garage) => garage.id !== id));
+    toast({ title: "Garage deleted", description: "Garage has been removed." });
+    setDeletingGarageId(null);
+  };
+
+  const updateBookingStatus = async (trackingId: string, status: string) => {
+    setUpdatingTrackingId(trackingId);
+    const { error } = await api.updateBookingStatus(trackingId, status);
+
+    if (error) {
+      toast({ title: "Status update failed", description: error, variant: "destructive" });
+      setUpdatingTrackingId(null);
+      return;
+    }
+
+    setBookings((prev) => prev.map((item) => (item.trackingId === trackingId ? { ...item, status } : item)));
+    toast({ title: "Booking updated", description: `Tracking ${trackingId} is now ${status}.` });
+    setUpdatingTrackingId(null);
+  };
+
+  const renderSection = () => {
+    if (loading) {
+      return <p className="text-sm text-muted-foreground">Loading data...</p>;
+    }
+
+    if (activeOption === "manage-garage") {
+      return (
+        <div className="space-y-4">
+          {filteredGarages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No garages found.</p>
+          ) : (
+            filteredGarages.map((garage) => {
+              const draft = garageEdits[garage.id] || {};
+              const name = String(draft.name ?? garage.name);
+              const addressState = String(draft.addressState ?? garage.addressState);
+              const addressCountry = String(draft.addressCountry ?? garage.addressCountry);
+
+              return (
+                <div key={garage.id} className="card-simple p-5 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Garage Name</label>
+                      <Input
+                        value={name}
+                        onChange={(event) => updateGarageEditField(garage.id, "name", event.target.value, "garage")}
+                        placeholder="Garage name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">State</label>
+                      <Input
+                        value={addressState}
+                        onChange={(event) =>
+                          updateGarageEditField(garage.id, "addressState", event.target.value, "garage")
+                        }
+                        placeholder="State"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Country</label>
+                      <Input
+                        value={addressCountry}
+                        onChange={(event) =>
+                          updateGarageEditField(garage.id, "addressCountry", event.target.value, "garage")
+                        }
+                        placeholder="Country"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50">
+                    <p className="text-[10px] text-muted-foreground uppercase font-medium">Created: {toDateLabel(garage.createdAt)}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={savingGarageId === garage.id}
+                        onClick={() =>
+                          saveGaragePatch(
+                            garage.id,
+                            { name, addressState, addressCountry },
+                            "Garage updated",
+                            "Garage details saved successfully."
+                          )
+                        }
+                      >
+                        {savingGarageId === garage.id ? "Saving..." : "Save"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={deletingGarageId === garage.id}
+                        onClick={() => deleteGarage(garage.id)}
+                      >
+                        {deletingGarageId === garage.id ? "Deleting..." : "Delete"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      );
+    }
+
+    if (activeOption === "garage-wise-staff") {
+      return (
+        <div className="space-y-3">
+          {filteredGarages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No garages found.</p>
+          ) : (
+            filteredGarages.map((garage) => {
+              const draft = garageEdits[garage.id] || {};
+              const mechanicsCount = Number(draft.mechanicsCount ?? garage.mechanicsCount) || 0;
+
+              return (
+                <div key={garage.id} className="card-simple p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-semibold text-foreground">{garage.name}</p>
+                    <p className="text-xs text-muted-foreground">Assigned mechanics for this garage.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      className="w-24 h-9"
+                      min={0}
+                      value={mechanicsCount}
+                      onChange={(event) =>
+                        updateGarageEditField(
+                          garage.id,
+                          "mechanicsCount",
+                          Number(event.target.value) || 0,
+                          "garage"
+                        )
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        saveGaragePatch(
+                          garage.id,
+                          { mechanicsCount },
+                          "Staff count updated",
+                          `${garage.name} staff count updated.`
+                        )
+                      }
+                      disabled={savingGarageId === garage.id}
+                    >
+                      {savingGarageId === garage.id ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      );
+    }
+
+    if (activeOption === "manage-customer") {
+      return (
+        <div className="space-y-4">
+          {customerSummaries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No customer records found.</p>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                {customerSummaries.map((customer) => (
+                  <button
+                    key={customer.email}
+                    type="button"
+                    onClick={() => setSelectedCustomerEmail(customer.email)}
+                    className={`card-simple p-4 text-left transition-all ${selectedCustomerEmail === customer.email
+                        ? "ring-2 ring-primary border-transparent bg-primary/5"
+                        : ""
+                      }`}
+                  >
+                    <p className="font-semibold text-foreground">{customer.name}</p>
+                    <p className="text-xs text-muted-foreground">{customer.email}</p>
+                    <div className="mt-3 flex items-center gap-4 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <span className="bg-secondary px-2 py-0.5 rounded">{customer.totalBookings} bookings</span>
+                      <span className="bg-secondary px-2 py-0.5 rounded">₹{customer.totalSpent.toLocaleString()}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="card-simple p-5 space-y-4 mt-6">
+                <p className="font-bold text-sm uppercase tracking-widest text-muted-foreground">Customer Bookings</p>
+                {selectedCustomerBookings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No bookings for selected customer.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedCustomerBookings.map((booking) => (
+                      <div
+                        key={booking.trackingId}
+                        className="rounded-lg border border-border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-muted/30"
+                      >
+                        <div>
+                          <p className="font-bold text-xs uppercase text-primary tracking-widest">{booking.trackingId}</p>
+                          <p className="font-medium text-sm mt-1">{booking.vehicle}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {toDateLabel(booking.date)} {booking.time}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline" className="font-bold">₹{booking.total.toLocaleString()}</Badge>
+                          <select
+                            className="h-9 rounded-md border border-input bg-background px-3 text-xs font-medium"
+                            value={booking.status}
+                            onChange={(event) => updateBookingStatus(booking.trackingId, event.target.value)}
+                            disabled={updatingTrackingId === booking.trackingId}
+                          >
+                            {bookingStatuses.map((status) => (
+                              <option key={status} value={status}>
+                                {status.toUpperCase()}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    if (activeOption === "manage-all-users") {
+      return (
+        <div className="space-y-3">
+          {usersList.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No user records found.</p>
+          ) : (
+            usersList.map((item) => (
+              <div key={`${item.role}-${item.email}`} className="card-simple p-4 flex items-center justify-between gap-3 bg-card">
+                <div>
+                  <p className="font-semibold text-foreground">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">{item.email}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge variant={item.role === "admin" ? "default" : "secondary"} className="uppercase font-bold text-[10px]">
+                    {item.role}
+                  </Badge>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{item.source}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {filteredGarages.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No garages found.</p>
+        ) : (
+          filteredGarages.map((garage) => {
+            const draft = contactEdits[garage.id] || {};
+            const contactPhone = String(draft.contactPhone ?? garage.contactPhone);
+            const mapUrl = String(draft.mapUrl ?? garage.mapUrl);
+
+            return (
+              <div key={garage.id} className="card-simple p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-lg text-foreground">{garage.name}</p>
+                  <div className="text-[10px] font-bold uppercase text-muted-foreground flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3" />
+                    {[garage.addressState, garage.addressCountry].filter(Boolean).join(", ")}
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Phone Number</label>
+                    <Input
+                      value={contactPhone}
+                      onChange={(event) => updateGarageEditField(garage.id, "contactPhone", event.target.value, "contact")}
+                      placeholder="Phone number"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Map URL</label>
+                    <Input
+                      value={mapUrl}
+                      onChange={(event) => updateGarageEditField(garage.id, "mapUrl", event.target.value, "contact")}
+                      placeholder="Map URL"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  {mapUrl ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={mapUrl} target="_blank" rel="noreferrer">Open Map</a>
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      saveGaragePatch(
+                        garage.id,
+                        { contactPhone, mapUrl },
+                        "Contact updated",
+                        `${garage.name} contact info updated.`
+                      )
+                    }
+                    disabled={savingGarageId === garage.id}
+                  >
+                    {savingGarageId === garage.id ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <div className="container mx-auto px-4 pt-32 pb-20">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-display text-primary-foreground mb-2">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage your auto garage operations</p>
+      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border shadow-sm">
+        <div className="mx-auto w-full max-w-7xl px-4">
+          <div className="flex h-14 items-center gap-8 overflow-x-auto whitespace-nowrap scrollbar-hide">
+            {navOptions.map((option) => {
+              const isActive = activeOption === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setActiveOption(option.key)}
+                  className={`text-xs font-bold uppercase tracking-[0.15em] transition-all duration-300 ${isActive ? "text-primary border-b-2 border-primary py-4 mt-0.5" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
-          <Button variant="destructive" onClick={handleLogout} className="flex items-center gap-2">
-            <LogOut className="w-4 h-4" />
-            Logout
-          </Button>
         </div>
+      </header>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="scale-rotate-3d shadow-3d">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-primary-foreground">{stats.totalBookings}</div>
-                <Calendar className="w-8 h-8 text-primary opacity-50" />
+      <main className="mx-auto w-full max-w-7xl px-4 pt-8 pb-12">
+        <div className="mb-8 grid gap-4 md:grid-cols-4">
+          <Card className="border-none shadow-sm bg-muted/50">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Garages</p>
+                <p className="text-2xl font-bold mt-1">{garages.length}</p>
               </div>
+              <Building2 className="h-6 w-6 text-primary/60" />
             </CardContent>
           </Card>
-
-          <Card className="scale-rotate-3d shadow-3d">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-primary-foreground">{stats.totalUsers}</div>
-                <Users className="w-8 h-8 text-primary opacity-50" />
+          <Card className="border-none shadow-sm bg-muted/50">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Staff</p>
+                <p className="text-2xl font-bold mt-1">{totalStaff}</p>
               </div>
+              <Users className="h-6 w-6 text-primary/60" />
             </CardContent>
           </Card>
-
-          <Card className="scale-rotate-3d shadow-3d">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-primary-foreground">{stats.totalRevenue}</div>
-                <DollarSign className="w-8 h-8 text-garage-success opacity-50" />
+          <Card className="border-none shadow-sm bg-muted/50">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Users</p>
+                <p className="text-2xl font-bold mt-1">{usersList.length}</p>
               </div>
+              <UserCog className="h-6 w-6 text-primary/60" />
             </CardContent>
           </Card>
-
-          <Card className="scale-rotate-3d shadow-3d">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Services</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-primary-foreground">{stats.pendingServices}</div>
-                <BarChart3 className="w-8 h-8 text-garage-warning opacity-50" />
+          <Card className="border-none shadow-sm bg-muted/50">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bookings</p>
+                <p className="text-2xl font-bold mt-1">{bookings.length}</p>
               </div>
+              <Mail className="h-6 w-6 text-primary/60" />
             </CardContent>
           </Card>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="bookings" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
-            <TabsTrigger value="bookings">Bookings</TabsTrigger>
-            <TabsTrigger value="staff">Staff Management</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          {/* Bookings Tab */}
-          <TabsContent value="bookings" className="space-y-4">
-            <Card className="shadow-3d">
-              <CardHeader>
-                <CardTitle>Recent Bookings</CardTitle>
-                <CardDescription>View and manage customer service bookings</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-3 px-4 text-muted-foreground font-medium">Customer</th>
-                        <th className="text-left py-3 px-4 text-muted-foreground font-medium">Service</th>
-                        <th className="text-left py-3 px-4 text-muted-foreground font-medium">Date</th>
-                        <th className="text-left py-3 px-4 text-muted-foreground font-medium">Status</th>
-                        <th className="text-left py-3 px-4 text-muted-foreground font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.map((booking) => (
-                        <tr key={booking.id} className="border-b border-border/50 hover:bg-card/50">
-                          <td className="py-3 px-4">{booking.customer}</td>
-                          <td className="py-3 px-4">{booking.service}</td>
-                          <td className="py-3 px-4">{booking.date}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              booking.status === "Completed" ? "bg-garage-success/20 text-garage-success" :
-                              booking.status === "Pending" ? "bg-garage-warning/20 text-garage-warning" :
-                              "bg-primary/20 text-primary"
-                            }`}>
-                              {booking.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <Dialog open={openBookingDialog && editingBooking?.id === booking.id} onOpenChange={setOpenBookingDialog}>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline" onClick={() => handleEditBooking(booking)}>Edit</Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Edit Booking</DialogTitle>
-                                  <DialogDescription>Update booking status and details</DialogDescription>
-                                </DialogHeader>
-                                {editingBooking && (
-                                  <div className="space-y-4">
-                                    <div>
-                                      <label className="text-sm font-medium text-primary-foreground">Status</label>
-                                      <Select value={editingBooking.status} onValueChange={(value) => setEditingBooking({...editingBooking, status: value})}>
-                                        <SelectTrigger className="mt-1">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="Pending">Pending</SelectItem>
-                                          <SelectItem value="In Progress">In Progress</SelectItem>
-                                          <SelectItem value="Completed">Completed</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <Button onClick={handleSaveBooking} className="w-full bg-primary hover:bg-primary/90">Save Changes</Button>
-                                  </div>
-                                )}
-                              </DialogContent>
-                            </Dialog>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Staff Tab */}
-          <TabsContent value="staff" className="space-y-4">
-            <div className="flex justify-end mb-4">
-              <Button className="bg-primary hover:bg-primary/90">Add Staff Member</Button>
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{title}</h2>
+            <div className="flex w-full max-w-2xl items-center gap-3 md:justify-end">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search..."
+                  className="pl-9 h-10 border-none bg-muted/50 focus-visible:ring-primary/30"
+                />
+              </div>
+              {activeOption === "manage-garage" ? (
+                <Button asChild className="h-10 whitespace-nowrap">
+                  <Link to="/garage/add">
+                    <Plus className="h-4 w-4" />
+                    Add Garage
+                  </Link>
+                </Button>
+              ) : null}
             </div>
-            <Card className="shadow-3d">
-              <CardHeader>
-                <CardTitle>Staff Members</CardTitle>
-                <CardDescription>Manage team members and their roles</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {staff.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-4 bg-card/50 rounded-lg border border-border/50 tilt-3d">
-                      <div className="flex-1">
-                        <p className="font-medium text-primary-foreground">{member.name}</p>
-                        <p className="text-sm text-muted-foreground">{member.role}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{member.email}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          member.status === "Active" ? "bg-garage-success/20 text-garage-success" : "bg-garage-warning/20 text-garage-warning"
-                        }`}>
-                          {member.status}
-                        </span>
-                        <Dialog open={openStaffDialog && editingStaff?.id === member.id} onOpenChange={setOpenStaffDialog}>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="outline" onClick={() => handleEditStaff(member)}>Edit</Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Edit Staff Member</DialogTitle>
-                              <DialogDescription>Update staff status and information</DialogDescription>
-                            </DialogHeader>
-                            {editingStaff && (
-                              <div className="space-y-4">
-                                <div>
-                                  <label className="text-sm font-medium text-primary-foreground">Status</label>
-                                  <Select value={editingStaff.status} onValueChange={(value) => setEditingStaff({...editingStaff, status: value})}>
-                                    <SelectTrigger className="mt-1">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Active">Active</SelectItem>
-                                      <SelectItem value="On Leave">On Leave</SelectItem>
-                                      <SelectItem value="Inactive">Inactive</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <Button onClick={handleSaveStaff} className="w-full bg-primary hover:bg-primary/90">Save Changes</Button>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4">
-            <Card className="shadow-3d">
-              <CardHeader>
-                <CardTitle>Admin Settings</CardTitle>
-                <CardDescription>Configure your garage management system</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-primary-foreground">Business Name</label>
-                  <input 
-                    type="text" 
-                    defaultValue="Auto Garage" 
-                    className="w-full px-4 py-2 rounded-lg bg-input border border-border text-primary-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-primary-foreground">Contact Email</label>
-                  <input 
-                    type="email" 
-                    defaultValue="admin@autogarage.com"
-                    className="w-full px-4 py-2 rounded-lg bg-input border border-border text-primary-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-primary-foreground">Phone Number</label>
-                  <input 
-                    type="tel"
-                    defaultValue="(123) 456-7890"
-                    className="w-full px-4 py-2 rounded-lg bg-input border border-border text-primary-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <Button className="bg-primary hover:bg-primary/90 w-full">Save Settings</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+          {renderSection()}
+        </div>
+      </main>
     </div>
   );
 };

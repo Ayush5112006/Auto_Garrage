@@ -25,7 +25,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/login");
+      navigate("/register");
       return;
     }
 

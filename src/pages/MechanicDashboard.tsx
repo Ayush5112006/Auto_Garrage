@@ -42,7 +42,7 @@ const MechanicDashboard = () => {
         }
 
         if (!user) {
-            navigate("/login");
+            navigate("/register");
             return;
         }
 
@@ -334,7 +334,7 @@ const MechanicDashboard = () => {
                                                 <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                                                     <div
                                                         className={`h-2 rounded-full ${item.quantity >= item.min_stock ? "bg-green-500" :
-                                                                item.quantity > 0 ? "bg-yellow-500" : "bg-red-500"
+                                                            item.quantity > 0 ? "bg-yellow-500" : "bg-red-500"
                                                             }`}
                                                         style={{ width: `${Math.min(ratio, 100)}%` }}
                                                     />

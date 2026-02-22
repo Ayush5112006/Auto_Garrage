@@ -1,5 +1,6 @@
 import Hero from "@/components/Hero";
 import Services from "@/components/Services";
+import CarBrandCarousel from "@/components/CarBrandCarousel";
 import WhyChooseUs from "@/components/WhyChooseUs";
 import Testimonials from "@/components/Testimonials";
 import CTASection from "@/components/CTASection";
@@ -11,6 +12,7 @@ const Index = () => {
     <div className="min-h-screen">
       <Hero />
       <Services />
+      <CarBrandCarousel />
       <WhyChooseUs />
       <Testimonials />
       <FAQ />

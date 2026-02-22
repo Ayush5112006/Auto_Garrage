@@ -1,89 +1,80 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Shield, Clock, Award } from "lucide-react";
 import ThreeDCar from "./ThreeDCar";
-import { GlitchText } from "@/components/ui/glitch-text";
 
 const Hero = () => {
+  const [currentCarIndex] = useState(0);
+
+  const cars = [
+    { name: "Ferrari", model: "458 Italia", color: "Red", hex: "#DC0000", modelPath: "/models/ferrari.glb" },
+  ];
+
   const stats = [
-    { icon: Shield, label: "Certified Mechanics", value: "50+" },
-    { icon: Clock, label: "Years Experience", value: "15+" },
-    { icon: Award, label: "Happy Customers", value: "10K+" },
+    { icon: Shield, label: "Certified", value: "50+" },
+    { icon: Clock, label: "Experience", value: "15+ yrs" },
+    { icon: Award, label: "Customers", value: "10K+" },
   ];
 
   return (
-    <section className="relative min-h-screen flex items-center hero-gradient overflow-hidden">
+    <section className="relative min-h-[90vh] flex items-center bg-background overflow-hidden pt-16">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
 
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }} />
-      </div>
-
-
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
-
-      <div className="container mx-auto px-4 pt-32 pb-20 relative z-10">
+      <div className="container mx-auto px-4 relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-
-          <div className="text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2 mb-6">
-              <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              <span className="text-sm text-primary font-medium">Trusted Auto Care Since 2009</span>
+          <div className="text-left animate-fade-in">
+            <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-1.5 mb-6 border border-primary/10">
+              <span className="w-1.5 h-1.5 bg-primary rounded-full" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Trusted Since 2009</span>
             </div>
 
-            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl text-white leading-tight mb-6">
-              EXPERT CAR
-              <GlitchText text="SERVICE & REPAIR" className="block text-primary" speed={40} />
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-foreground leading-[1.1] mb-6 tracking-tight">
+              Expert Care for <br />
+              <span className="text-primary italic">Every Premium Car.</span>
             </h1>
 
-            <p className="text-lg text-gray-300 max-w-xl mx-auto lg:mx-0 mb-8">
-              From routine maintenance to complex repairs, our certified technicians deliver
-              exceptional service with transparency and care. Book your appointment today.
+            <p className="text-lg text-muted-foreground max-w-lg mb-8 leading-relaxed">
+              Certified technicians, transparent pricing, and exceptional service.
+              Book your appointment today at your nearest garage.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button size="lg" className="text-lg px-8 animate-pulse-glow" asChild>
+            <div className="flex flex-wrap gap-4">
+              <Button size="lg" className="rounded-xl h-14 px-8 text-md font-bold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95" asChild>
                 <Link to="/garages">
-                  Browse Garages
+                  Explore Garages
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" className="text-lg px-8 border-white/20 text-white hover:bg-white/10" asChild>
+              <Button size="lg" variant="outline" className="rounded-xl h-14 px-8 text-md font-bold hover:bg-muted active:scale-95" asChild>
                 <Link to="/track">Track Booking</Link>
               </Button>
             </div>
 
-
-            <div className="grid grid-cols-3 gap-6 mt-12 pt-12 border-t border-white/10">
+            <div className="grid grid-cols-3 gap-8 mt-12 pt-8 border-t border-border/50">
               {stats.map((stat, index) => (
-                <div key={index} className="text-center lg:text-left">
-                  <stat.icon className="w-8 h-8 text-primary mx-auto lg:mx-0 mb-2" />
-                  <div className="font-display text-3xl text-white">{stat.value}</div>
-                  <div className="text-sm text-gray-400">{stat.label}</div>
+                <div key={index}>
+                  <div className="text-2xl font-bold text-foreground">{stat.value}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-1">{stat.label}</div>
                 </div>
               ))}
             </div>
           </div>
 
+          <div className="relative hidden lg:block animate-fade-in-delayed">
+            <div className="w-full h-[500px] relative rounded-3xl overflow-hidden bg-muted/30 border border-border/50">
+              <ThreeDCar
+                modelPath={cars[currentCarIndex].modelPath}
+                color={cars[currentCarIndex].hex}
+              />
+            </div>
 
-          <div className="relative hidden lg:block perspective-container">
-            <div className="absolute -inset-4 bg-primary/20 rounded-3xl blur-3xl cube-3d" />
-            <div className="relative bg-gradient-to-br from-garage-steel to-garage-dark rounded-3xl p-8 border border-primary-foreground/10 scale-rotate-3d shadow-3d h-[600px]">
-              <div className="w-full h-full rounded-2xl overflow-hidden float-3d">
-                <ThreeDCar />
-              </div>
-
-              <div className="absolute -bottom-6 -left-6 bg-card p-6 rounded-2xl shadow-2xl border border-border tilt-3d glow-3d">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-garage-success/10 rounded-xl flex items-center justify-center pulse-3d">
-                    <Shield className="w-7 h-7 text-garage-success" />
-                  </div>
-                  <div>
-                    <p className="font-display text-xl text-card-foreground">100% Guaranteed</p>
-                    <p className="text-sm text-muted-foreground">Quality Workmanship</p>
-                  </div>
+            <div className="absolute -bottom-6 -left-6 bg-background p-6 rounded-2xl shadow-xl border border-border max-w-[200px]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-primary" />
                 </div>
+                <p className="font-bold text-sm leading-tight">100% Quality Guaranteed</p>
               </div>
             </div>
           </div>

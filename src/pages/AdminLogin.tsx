@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+const DEFAULT_ADMIN_EMAIL = import.meta.env.VITE_DEFAULT_ADMIN_EMAIL || "admin@garage.com";
+const DEFAULT_ADMIN_PASSWORD = import.meta.env.VITE_DEFAULT_ADMIN_PASSWORD || "admin123";
+
+export default function AdminLogin() {
+  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
+  const [password, setPassword] = useState(DEFAULT_ADMIN_PASSWORD);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -23,18 +26,14 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(email, password, "/admin");
       toast({
-        title: "Login Successful!",
-        description: "Welcome back! Redirecting to dashboard...",
+        title: "Admin login successful",
+        description: "Redirecting to admin dashboard...",
       });
-
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1000);
     } catch (error: any) {
       toast({
-        title: "Login Failed",
+        title: "Login failed",
         description: error?.message || "Invalid credentials",
         variant: "destructive",
       });
@@ -45,22 +44,23 @@ export default function Login() {
 
   return (
     <div className="min-h-screen">
-
       <main className="pt-32 pb-24 bg-gradient-to-b from-background to-muted/30">
         <div className="container mx-auto px-4">
           <div className="max-w-md mx-auto">
             <Card className="border-2">
               <CardHeader className="text-center space-y-2">
                 <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
-                  <LogIn className="w-8 h-8 text-primary" />
+                  <ShieldCheck className="w-8 h-8 text-primary" />
                 </div>
-                <CardTitle className="text-3xl">Welcome Back</CardTitle>
-                <CardDescription>Sign in to your account to access your bookings</CardDescription>
+                <CardTitle className="text-3xl">Admin Login</CardTitle>
+                <CardDescription>Sign in to access the admin dashboard</CardDescription>
               </CardHeader>
 
               <CardContent>
+                <div className="mb-4 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  Default admin: <span className="font-semibold">{DEFAULT_ADMIN_EMAIL}</span> / <span className="font-semibold">{DEFAULT_ADMIN_PASSWORD}</span>
+                </div>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Email */}
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-base">Email Address</Label>
                     <div className="relative">
@@ -68,7 +68,7 @@ export default function Login() {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="your@email.com"
+                        placeholder="admin@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -77,7 +77,6 @@ export default function Login() {
                     </div>
                   </div>
 
-                  {/* Password */}
                   <div className="space-y-2">
                     <Label htmlFor="password" className="text-base">Password</Label>
                     <div className="relative">
@@ -96,57 +95,28 @@ export default function Login() {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
-                        {showPassword ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Submit Button */}
                   <Button
                     type="submit"
                     className="w-full mt-6"
                     size="lg"
                     disabled={loading}
                   >
-                    {loading ? "Signing in..." : "Sign In"}
+                    {loading ? "Signing in..." : "Sign In as Admin"}
                   </Button>
                 </form>
 
-                {/* Divider */}
-                <div className="my-6 flex items-center gap-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground">OR</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-
-                {/* Guest Option */}
-                <div className="space-y-3 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    New here? You can book as a guest without signing in.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate("/booking")}
-                  >
-                    Continue as Guest
-                  </Button>
-                </div>
-
-                {/* Register Link */}
                 <div className="mt-6 text-center text-sm text-muted-foreground">
-                  Don't have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => navigate("/register")}
+                    onClick={() => navigate("/")}
                     className="text-primary hover:underline font-semibold"
                   >
-                    Create one
+                    Back to Home
                   </button>
                 </div>
               </CardContent>

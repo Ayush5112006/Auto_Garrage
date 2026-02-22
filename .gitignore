@@ -68,3 +68,5 @@ coverage/
 # Uploads (optional)
 # ========================
 uploads/
+
+/generated/prisma
