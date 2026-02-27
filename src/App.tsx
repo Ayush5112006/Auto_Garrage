@@ -8,6 +8,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./context/useAuth";
 import { Loader2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
+import { GlobalShortcuts } from "./components/GlobalShortcuts";
 import { RouteChangeProgress } from "./components/RouteChangeProgress";
 
 // Lazy load pages
@@ -148,8 +149,6 @@ const BackgroundLayer = () => {
 export default function App() {
   return (
     <ErrorBoundary>
-      <RouteChangeProgress />
-
       {/* White Dot Pattern */}
       <DotPattern
         className="fixed inset-0 z-[1] pointer-events-none opacity-20 text-white fill-white"
@@ -164,6 +163,8 @@ export default function App() {
         <BackgroundLayer />
         <AuthProvider>
           <div className="relative z-10">
+            <RouteChangeProgress />
+            <GlobalShortcuts />
             <Navbar />
             <Suspense fallback={<PageLoader />}>
               <Routes>

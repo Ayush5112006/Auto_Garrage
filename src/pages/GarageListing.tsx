@@ -192,11 +192,12 @@ const GarageListing = () => {
             </p>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar (Global \" / \" shortcut focuses this input) */}
           <div className="max-w-2xl mx-auto mb-12">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
+                id="global-garage-search"
                 placeholder="Search garage name or location..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

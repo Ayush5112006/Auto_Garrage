@@ -12,23 +12,25 @@ export const RouteChangeProgress = () => {
     let timeoutId: number | undefined;
 
     setVisible(true);
-    setProgress(15);
+    setProgress(25);
 
+    // Advance quickly so short navigations don't feel slow
     intervalId = window.setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return prev;
-        const next = prev + Math.random() * 15;
+        const next = prev + 25;
         return next > 90 ? 90 : next;
       });
-    }, 150);
+    }, 120);
 
+    // Finish sooner to reduce perceived buffering
     timeoutId = window.setTimeout(() => {
       setProgress(100);
       window.setTimeout(() => {
         setVisible(false);
         setProgress(0);
-      }, 250);
-    }, 700);
+      }, 150);
+    }, 400);
 
     return () => {
       if (intervalId !== undefined) {

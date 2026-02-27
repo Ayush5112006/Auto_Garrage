@@ -1,85 +1,96 @@
-# Auto Garage (Auto_Garrage)
+# Auto Garage Project
 
-A simple booking and staff management web application for an auto garage. This repo uses a React + Vite frontend (TypeScript + Tailwind) with JavaScript/Supabase-based data and authentication flows.
+Auto Garage is a web-based garage booking and workshop management platform.
 
-Key features
-- Booking creation and management
-- Staff listing and admin pages
-- Responsive UI built with Tailwind CSS
-- Supabase-based authentication and data persistence
+## Features
+- Role-based authentication (Customer, Staff/Mechanic, Manager, Admin)
+- Garage discovery and booking flow
+- Booking tracking with tracking ID
+- Staff work order management
+- Admin operations and analytics dashboard
 
-Tech stack
-- Frontend: Vite, React, TypeScript, Tailwind CSS
-- Backend services: Supabase
-- Database: Supabase PostgreSQL
-- Tests: Vitest (unit tests for utilities and schemas)
+## Tech Stack
+- Frontend: React + TypeScript + Vite
+- UI: Tailwind CSS + shadcn/ui
+- Backend: Express
+- Database/Auth: Supabase + Prisma
+- Testing: Vitest
 
-Repository layout
-- `src/` — React app source (components, pages, hooks, lib)
-- `docs/` — setup notes and SQL files
-- `public/` — static assets
-- `tests/` — Vitest unit tests
+## Run Project
+1. Install dependencies:
+	- `npm install`
+2. Start frontend:
+	- `npm run dev`
+3. Start backend:
+	- `npm run dev:server`
+4. Start both together:
+	- `npm run dev:all`
 
-Quick start
+## All Pages (Source Files)
+- `src/pages/Index.tsx`
+- `src/pages/About.tsx`
+- `src/pages/Booking.tsx`
+- `src/pages/Contact.tsx`
+- `src/pages/Register.tsx`
+- `src/pages/ServicesPage.tsx`
+- `src/pages/Admin.tsx`
+- `src/pages/AdminLogin.tsx`
+- `src/pages/MechanicDashboard.tsx`
+- `src/pages/StaffLogin.tsx`
+- `src/pages/NotFound.tsx`
+- `src/pages/Track.tsx`
+- `src/pages/GarageListing.tsx`
+- `src/pages/GarageDetail.tsx`
+- `src/pages/Dashboard.tsx`
+- `src/pages/Pricing.tsx`
+- `src/pages/AddGarage.tsx`
+- `src/pages/GarageHost.tsx`
+- `src/pages/AddStaff.tsx`
+- `src/pages/GarageLogin.tsx`
+- `src/pages/CustomerLogin.tsx`
+- `src/pages/ForgotPassword.tsx`
+- `src/pages/ResetPassword.tsx`
 
-Prerequisites
-- Node.js (>=18)
-- npm or yarn
-- Supabase project credentials (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)
+## Routes Map
+- `/` → Home
+- `/about` → About
+- `/services` → Services
+- `/pricing` → Pricing
+- `/contact` → Contact
+- `/garages` → Garage Listing
+- `/garage/:id` → Garage Detail
+- `/booking` → Booking (auth)
+- `/track` → Track Booking (auth)
+- `/dashboard` → Customer Dashboard (auth)
+- `/garagehost` → Garage Host Dashboard (manager/admin)
+- `/garage/add` → Add Garage (auth)
+- `/garage/staff/add` → Add Staff (auth)
+- `/staff` → Mechanic Dashboard (staff/mechanic)
+- `/admin/login` → Admin Login
+- `/admin` → Admin Dashboard
+- `/login` → Customer Login
+- `/register` → Register
+- `/forgot-password` → Forgot Password
+- `/reset-password` → Reset Password
+- `/garage/login` → Garage Login
 
-Local frontend development
+## Important Docs
+- `README.md`
+- `QUICK_START.md`
+- `PRISMA_SETUP.md`
+- `BOOKING_SYSTEM.md`
+- `docs/AUTH.md`
+- `docs/SUPABASE_FULL_SINGLE_SETUP.sql`
+- `docs/SUPABASE_DEMO_SEED.sql`
 
-1. Install dependencies
+## NPM Scripts
+- `npm run dev`
+- `npm run dev:server`
+- `npm run dev:all`
+- `npm run test`
+- `npm run lint`
+- `npm run build`
 
-```bash
-npm install
-```
-
-2. Run the dev server
-
-```bash
-npm run dev
-```
-
-3. Open the app in the browser (Vite will show the URL, typically `http://localhost:5173`)
-
-Environment
-- Add Supabase values to your local env file:
-
-```bash
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-Build for production
-
-```bash
-npm run build
-npx serve -s dist
-```
-
-Replace `serve` with your preferred static file server or deploy to a platform that serves the `dist/` folder.
-
-Tests
-
-Run unit tests with Vitest:
-
-```bash
-npm run test
-```
-
-Documentation
-- API details and DB setup are in the `docs/` folder.
-
-Supabase demo data
-- Run schema first in Supabase SQL Editor: `docs/SUPABASE_FULL_SINGLE_SETUP.sql`
-- Run demo seed SQL: `docs/SUPABASE_DEMO_SEED.sql` (it auto-creates missing demo auth users)
-- Demo rows are inserted for users/profiles, garage, staff, services, bookings, tasks, inventory, and time logs.
-
-Contributing
-- Open an issue or create a pull request. Keep changes focused and add tests for new logic when possible.
-
-License
-- See `package.json` for license information.
-
-If you'd like, I can run the test suite or create a small CONTRIBUTING.md next.
+## Notes
+- Run Supabase setup SQL first, then demo seed SQL.
+- Use `.env` values for API, Supabase, and Prisma before running production flows.

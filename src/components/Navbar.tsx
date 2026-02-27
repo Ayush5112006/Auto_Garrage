@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Wrench } from "lucide-react";
 import { useAuth } from "@/context/useAuth";
 import { Button } from "@/components/ui/button";
+import { NotificationCenter } from "@/components/NotificationCenter";
 
 interface NavLink {
   name: string;
@@ -111,20 +112,23 @@ const Navbar = (): JSX.Element => {
               </Link>
             ))}
 
-            {user ? (
-              <Button size="sm" variant="outline" onClick={handleLogout}>
-                Logout
-              </Button>
-            ) : !isAuthPage ? (
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/login">Login</Link>
+            <div className="flex items-center gap-3">
+              <NotificationCenter />
+              {user ? (
+                <Button size="sm" variant="outline" onClick={handleLogout}>
+                  Logout
                 </Button>
-                <Button size="sm" asChild>
-                  <Link to="/register">Register</Link>
-                </Button>
-              </div>
-            ) : null}
+              ) : !isAuthPage ? (
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/login">Login</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link to="/register">Register</Link>
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <button
