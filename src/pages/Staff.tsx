@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, CheckCircle, AlertCircle, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 import {
   getStaffProfile,
   getTimeLogsForStaff,
   getWorkOrdersForStaff,
+  updateWorkOrderStatus,
   type StaffProfile,
   type TimeLog,
   type WorkOrder,
@@ -112,11 +112,18 @@ const Staff = () => {
     logout();
   };
 
+  const updateTaskStatus = async (id: string, status: string) => {
+    try {
+      await updateWorkOrderStatus(id, status);
+      setWorkOrders((prev) => prev.map((order) => (order.id === id ? { ...order, status } : order)));
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Unable to update task status.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <div className="container mx-auto px-4 pt-32 pb-20">
+      <div className="page-shell pt-32 pb-20">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -214,6 +221,22 @@ const Staff = () => {
                       }`}>
                         {task.status}
                       </span>
+                      <div className="ml-3 flex items-center gap-2">
+                        {task.status === "Pending" ? (
+                          <>
+                            <Button size="sm" className="h-8" onClick={() => updateTaskStatus(task.id, "in-progress")}>
+                              Accept
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => updateTaskStatus(task.id, "cancelled")}>
+                              Reject
+                            </Button>
+                          </>
+                        ) : task.status === "In Progress" ? (
+                          <Button size="sm" className="h-8" onClick={() => updateTaskStatus(task.id, "completed")}>
+                            Complete
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                     ))
                   )}

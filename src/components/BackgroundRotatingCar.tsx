@@ -1,4 +1,4 @@
-import { useRef, Suspense } from "react";
+import { useEffect, useRef, Suspense, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Float } from "@react-three/drei";
 import * as THREE from "three";
@@ -29,22 +29,35 @@ function RotatingModel({ modelPath }: ModelProps) {
 }
 
 const BackgroundRotatingCar = () => {
+    const [shouldRender3D, setShouldRender3D] = useState(true);
+
+    useEffect(() => {
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const isNarrowScreen = window.innerWidth < 1024;
+        setShouldRender3D(!reducedMotion && !isNarrowScreen);
+    }, []);
+
     return (
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-background">
             <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-30" />
 
-            <div className="absolute inset-0 opacity-20">
-                <Canvas
-                    camera={{ position: [0, 0, 15], fov: 40 }}
-                    gl={{ antialias: true, alpha: true }}
-                >
-                    <Suspense fallback={null}>
-                        <ambientLight intensity={0.5} />
-                        <pointLight position={[10, 10, 10]} intensity={1} />
-                        <RotatingModel modelPath="/models/ferrari.glb" />
-                    </Suspense>
-                </Canvas>
-            </div>
+            {shouldRender3D ? (
+                <div className="absolute inset-0 opacity-20">
+                    <Canvas
+                        dpr={[1, 1.1]}
+                        frameloop="always"
+                        performance={{ min: 0.5 }}
+                        camera={{ position: [0, 0, 15], fov: 40 }}
+                        gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
+                    >
+                        <Suspense fallback={null}>
+                            <ambientLight intensity={0.5} />
+                            <pointLight position={[10, 10, 10]} intensity={1} />
+                            <RotatingModel modelPath="/models/ferrari.glb" />
+                        </Suspense>
+                    </Canvas>
+                </div>
+            ) : null}
         </div>
     );
 };

@@ -1,204 +1,244 @@
-import { Router } from "express";
-import bcrypt from "bcryptjs";
+import { Router, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { prisma } from "../lib/prisma";
-import { AuthRequest } from "../middleware/auth";
+import { supabaseAdmin } from "../lib/supabase";
+import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 const DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || "admin@garage.com";
-const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || "admin123";
-const LOCAL_ADMIN_ID = "local-admin";
+
 const isAdminEmail = (email?: string | null) =>
   String(email || "").trim().toLowerCase() === DEFAULT_ADMIN_EMAIL.trim().toLowerCase();
+
+const normalizeRole = (value?: string | null, fallback: string = "customer") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "admin") return "admin";
+  if (normalized === "manager") return "manager";
+  if (normalized === "staff" || normalized === "mechanic") return "staff";
+  if (normalized === "customer" || normalized === "user") return "customer";
+  return fallback;
+};
+
+const buildAuthCookieOptions = (rememberMe: boolean) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
+});
+
+// Login
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password, rememberMe } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Authenticate with Supabase
+    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError || !authData.user) {
+      return res.status(401).json({ error: authError?.message || "Invalid credentials" });
+    }
+
+    // Get profile
+    const { data: profileData } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+
+    const role = normalizeRole(profileData?.role, isAdminEmail(email) ? "admin" : "customer");
+    const name = profileData?.name || authData.user.user_metadata?.name || "User";
+
+    const token = jwt.sign(
+      {
+        userId: authData.user.id,
+        email: authData.user.email,
+        name,
+        role,
+      },
+      JWT_SECRET,
+      { expiresIn: rememberMe ? "30d" : "1d" }
+    );
+
+    res.cookie("token", token, buildAuthCookieOptions(Boolean(rememberMe)));
+
+    res.json({
+      user: {
+        id: authData.user.id,
+        email: authData.user.email,
+        name,
+        role,
+      },
+    });
+  } catch (error: any) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Register
 router.post("/register", async (req, res) => {
   try {
-    if (!prisma) {
-      return res.status(503).json({ error: "Database not configured" });
-    }
-
     const { name, email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedName = String(name || "").trim();
+    const role = isAdminEmail(normalizedEmail) ? "admin" : "customer";
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: name || null,
-        password: hashedPassword,
-      },
-    });
-
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
-
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: "user",
-      },
-    });
-  } catch (error: any) {
-    console.error("Register error:", error);
-    res.status(500).json({ error: error.message || "Registration failed" });
-  }
-});
-
-// Login
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
-
-    if (!prisma) {
-      if (email !== DEFAULT_ADMIN_EMAIL || password !== DEFAULT_ADMIN_PASSWORD) {
-        return res.status(401).json({ error: "Invalid email or password" });
-      }
-
-      const token = jwt.sign({ userId: LOCAL_ADMIN_ID }, JWT_SECRET, { expiresIn: "7d" });
-
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-
-      return res.json({
-        user: {
-          id: LOCAL_ADMIN_ID,
-          email: DEFAULT_ADMIN_EMAIL,
-          name: "Admin",
-          role: "admin",
-        },
-      });
-    }
-
-    let user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      const shouldCreateDefaultAdmin =
-        email === DEFAULT_ADMIN_EMAIL && password === DEFAULT_ADMIN_PASSWORD;
-
-      if (!shouldCreateDefaultAdmin) {
-        return res.status(401).json({ error: "Invalid email or password" });
-      }
-
-      const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
-      user = await prisma.user.create({
+    const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
+      email: normalizedEmail,
+      password,
+      options: {
         data: {
-          email: DEFAULT_ADMIN_EMAIL,
-          name: "Admin",
-          password: hashedPassword,
+          name: normalizedName,
+          role: role,
         },
-      });
-    }
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
-
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      },
     });
+
+    if (signUpError || !signUpData.user) {
+      return res.status(400).json({ error: signUpError?.message || "Registration failed" });
+    }
+
+    // Profile is created via trigger 'on_auth_user_created' in SQL
+    // But we'll do an upsert just in case the trigger isn't set up yet
+    const profileName = normalizedName || "User";
+    await supabaseAdmin.from("profiles").upsert({
+      id: signUpData.user.id,
+      email: normalizedEmail,
+      name: profileName,
+      role: role,
+    });
+
+    const token = jwt.sign(
+      {
+        userId: signUpData.user.id,
+        email: normalizedEmail,
+        name: profileName,
+        role,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.cookie("token", token, buildAuthCookieOptions(true));
 
     res.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: isAdminEmail(user.email) ? "admin" : "user",
+        id: signUpData.user.id,
+        email: normalizedEmail,
+        name: profileName,
+        role,
       },
     });
   } catch (error: any) {
-    console.error("Login error:", error);
-    res.status(500).json({ error: error.message || "Login failed" });
+    console.error("Registration error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Get current user
-router.get("/me", async (req: AuthRequest, res) => {
+router.get("/me", authenticate, async (req: AuthRequest, res) => {
   try {
-    const token = req.cookies.token || req.headers.authorization?.replace("Bearer ", "");
+    if (!req.userId) return res.json({ user: null });
 
-    if (!token) {
-      return res.json({ user: null });
-    }
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", req.userId)
+      .maybeSingle();
 
-    let userId: string | undefined;
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-      userId = decoded.userId;
-    } catch {
-      return res.json({ user: null });
-    }
-
-    if (!prisma) {
-      if (userId === LOCAL_ADMIN_ID) {
-        return res.json({
-          user: {
-            id: LOCAL_ADMIN_ID,
-            email: DEFAULT_ADMIN_EMAIL,
-            name: "Admin",
-            role: "admin",
-          },
-        });
-      }
-
-      return res.json({ user: null });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, name: true },
-    });
-
-    if (!user) {
+    if (!profile) {
       return res.json({ user: null });
     }
 
     res.json({
       user: {
-        ...user,
-        role: isAdminEmail(user.email) ? "admin" : "user",
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        role: profile.role,
       },
     });
-  } catch (error: any) {
-    console.error("Get user error:", error);
-    res.status(500).json({ error: error.message || "Failed to get user" });
+  } catch (error) {
+    res.json({ user: null });
   }
 });
 
 // Logout
 router.post("/logout", (req, res) => {
-  res.clearCookie("token");
-  res.json({ message: "Logged out successfully" });
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ error: "Failed to logout" });
+  }
+});
+
+// Update profile
+router.patch("/update-profile", authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { name } = req.body;
+
+    const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .update({ name })
+      .eq("id", req.userId)
+      .select()
+      .maybeSingle();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+// Admin: Get all users
+router.get("/users", authenticate, async (req: AuthRequest, res) => {
+  if (req.userRole !== "admin") return res.status(403).json({ error: "Unauthorized" });
+
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+// Admin: Update user role
+router.patch("/users/:id/role", authenticate, async (req: AuthRequest, res) => {
+  if (req.userRole !== "admin") return res.status(403).json({ error: "Unauthorized" });
+
+  const { id } = req.params;
+  const { role } = req.body;
+
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .update({ role })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 export default router;

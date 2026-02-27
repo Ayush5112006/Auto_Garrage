@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Phone, Lock, User } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Register() {
@@ -49,7 +49,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen pt-32 pb-24 flex items-center justify-center">
-      <div className="container max-w-md mx-auto px-4">
+      <div className="page-shell max-w-md">
         <Card className="border-2">
           <CardHeader className="text-center space-y-2">
             <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">

@@ -4,17 +4,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api-client";
-import { Building2, Mail, MapPin, Phone, Plus, Search, UserCog, Users } from "lucide-react";
+import { Building2, Mail, MapPin, Phone, Plus, Search, UserCog, Users, TrendingUp, Filter, CheckCircle2, Clock } from "lucide-react";
+import Footer from "@/components/Footer";
 
 type AdminOption =
   | "manage-garage"
   | "garage-wise-staff"
   | "manage-customer"
   | "manage-all-users"
-  | "garage-contact";
+  | "garage-contact"
+  | "manage-work-orders"
+  | "analytics";
 
 type Garage = {
   id: string;
@@ -30,6 +33,8 @@ type Garage = {
 };
 
 type Booking = {
+  id: string;
+  garageId: string;
   trackingId: string;
   name: string;
   email: string;
@@ -43,6 +48,15 @@ type Booking = {
   userId: string;
 };
 
+type AdminWorkOrder = {
+  id: string;
+  status: string;
+  assignedTo: string;
+  vehicle: string;
+  customer: string;
+  service: string;
+};
+
 type CustomerSummary = {
   email: string;
   name: string;
@@ -53,41 +67,53 @@ type CustomerSummary = {
 };
 
 const navOptions: Array<{ key: AdminOption; label: string }> = [
+  { key: "analytics", label: "Analytics Overview" },
   { key: "manage-garage", label: "Manage Garage" },
+  { key: "manage-work-orders", label: "Work Orders" },
   { key: "garage-wise-staff", label: "Garage Wise Staff" },
-  { key: "manage-customer", label: "Manage User/Customer" },
-  { key: "manage-all-users", label: "Manage All Users" },
-  { key: "garage-contact", label: "Contact for All Garage" },
+  { key: "manage-customer", label: "Customer Activity" },
+  { key: "manage-all-users", label: "All Users" },
+  { key: "garage-contact", label: "Garage Contacts" },
 ];
 
 const bookingStatuses = ["pending", "confirmed", "in-progress", "completed", "cancelled"];
-const DEFAULT_ADMIN_EMAIL = (import.meta.env.VITE_DEFAULT_ADMIN_EMAIL || "admin@garage.com").toLowerCase();
 
 const normalizeGarage = (raw: Record<string, any>): Garage => ({
   id: String(raw.id ?? ""),
-  name: String(raw.name ?? ""),
-  contactPhone: String(raw.contactPhone ?? raw.contact_phone ?? ""),
-  addressState: String(raw.addressState ?? raw.address_state ?? ""),
-  addressCountry: String(raw.addressCountry ?? raw.address_country ?? ""),
-  mechanicsCount: Number(raw.mechanicsCount ?? raw.mechanics_count ?? 0) || 0,
-  mapUrl: String(raw.mapUrl ?? raw.map_url ?? ""),
-  openTime: String(raw.openTime ?? raw.open_time ?? ""),
+  name: String(raw.garage_name ?? raw.name ?? ""),
+  contactPhone: String(raw.contact_phone ?? raw.contactPhone ?? ""),
+  addressState: String(raw.location ?? raw.address_state ?? raw.addressState ?? ""),
+  addressCountry: String(raw.address_country ?? raw.addressCountry ?? ""),
+  mechanicsCount: Number(raw.mechanics_count ?? raw.mechanicsCount ?? 0) || 0,
+  mapUrl: String(raw.map_url ?? raw.mapUrl ?? ""),
+  openTime: String(raw.open_time ?? raw.openTime ?? ""),
   description: String(raw.description ?? ""),
-  createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+  createdAt: String(raw.created_at ?? raw.createdAt ?? ""),
 });
 
 const normalizeBooking = (raw: Record<string, any>): Booking => ({
-  trackingId: String(raw.trackingId ?? raw.tracking_id ?? ""),
-  name: String(raw.name ?? ""),
-  email: String(raw.email ?? ""),
-  phone: String(raw.phone ?? ""),
+  id: String(raw.id ?? ""),
+  garageId: String(raw.garage_id ?? raw.garageId ?? ""),
+  trackingId: String(raw.tracking_id ?? raw.trackingId ?? ""),
+  name: String(raw.name ?? raw.customer?.name ?? ""),
+  email: String(raw.email ?? raw.customer?.email ?? ""),
+  phone: String(raw.phone ?? raw.customer?.phone ?? ""),
   vehicle: String(raw.vehicle ?? ""),
-  date: String(raw.date ?? raw.service_date ?? ""),
+  date: String(raw.service_date ?? raw.date ?? ""),
   time: String(raw.time ?? ""),
-  total: Number(raw.total ?? 0) || 0,
+  total: Number(raw.total_price ?? raw.total ?? 0) || 0,
   status: String(raw.status ?? "pending"),
-  createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
-  userId: String(raw.userId ?? raw.user_id ?? ""),
+  createdAt: String(raw.created_at ?? raw.createdAt ?? ""),
+  userId: String(raw.customer_id ?? raw.userId ?? ""),
+});
+
+const normalizeWorkOrder = (raw: Record<string, any>): AdminWorkOrder => ({
+  id: String(raw.id ?? ""),
+  status: String(raw.task_status ?? raw.status ?? "pending"),
+  assignedTo: String(raw.staff_id ?? raw.assigned_to ?? raw.assignedTo ?? "-"),
+  vehicle: String(raw.booking?.vehicle ?? raw.vehicle ?? "Vehicle"),
+  customer: String(raw.booking?.customer?.name ?? raw.booking?.name ?? raw.customer_name ?? "Customer"),
+  service: String(raw.booking?.service?.service_name ?? raw.service_type ?? "Service"),
 });
 
 const toDateLabel = (value: string) => {
@@ -102,488 +128,415 @@ const Admin = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [activeOption, setActiveOption] = useState<AdminOption>("manage-garage");
+  const [activeOption, setActiveOption] = useState<AdminOption>("analytics");
   const [garages, setGarages] = useState<Garage[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingGarageId, setSavingGarageId] = useState<string | null>(null);
   const [deletingGarageId, setDeletingGarageId] = useState<string | null>(null);
-  const [updatingTrackingId, setUpdatingTrackingId] = useState<string | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [workOrders, setWorkOrders] = useState<AdminWorkOrder[]>([]);
   const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string>("");
 
   const [garageEdits, setGarageEdits] = useState<Record<string, Partial<Garage>>>({});
   const [contactEdits, setContactEdits] = useState<Record<string, Partial<Garage>>>({});
-  const isAdminUser =
-    !!user && (user.role === "admin" || user.email?.toLowerCase() === DEFAULT_ADMIN_EMAIL);
+  const isAdminUser = !!user && user.role === "admin";
 
   const loadAdminData = async () => {
     setLoading(true);
+    try {
+      const [garageResult, bookingResult, userResult, workOrderResult] = await Promise.all([
+        api.getGarages(),
+        api.getAdminBookings(),
+        api.getUsersApi(),
+        api.getWorkOrdersApi()
+      ]);
 
-    const [garageResult, bookingResult] = await Promise.all([api.getGarages(), api.getAdminBookings()]);
+      const nextGarages = Array.isArray(garageResult.data)
+        ? garageResult.data.map((row) => normalizeGarage(row as Record<string, any>))
+        : [];
 
-    const nextGarages = Array.isArray(garageResult.data)
-      ? garageResult.data.map((row) => normalizeGarage(row as Record<string, any>))
-      : [];
+      const nextBookings = Array.isArray(bookingResult.data)
+        ? bookingResult.data.map((row) => normalizeBooking(row as Record<string, any>))
+        : [];
 
-    const nextBookings = Array.isArray(bookingResult.data)
-      ? bookingResult.data.map((row) => normalizeBooking(row as Record<string, any>))
-      : [];
+      setGarages(nextGarages);
+      setBookings(nextBookings);
+      setUsers(Array.isArray(userResult.data) ? userResult.data : []);
+      setWorkOrders(
+        Array.isArray(workOrderResult.data)
+          ? workOrderResult.data.map((row) => normalizeWorkOrder(row as Record<string, any>))
+          : []
+      );
 
-    setGarages(nextGarages);
-    setBookings(nextBookings);
-
-    if (nextBookings.length > 0 && !selectedCustomerEmail) {
-      setSelectedCustomerEmail(nextBookings[0].email);
+      if (nextBookings.length > 0 && !selectedCustomerEmail) {
+        setSelectedCustomerEmail(nextBookings[0].email);
+      }
+    } catch (error: any) {
+      toast({ title: "Failed to load admin data", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-
-    if (garageResult.error || bookingResult.error) {
-      toast({
-        title: "Some data could not load",
-        description: garageResult.error || bookingResult.error || "Please refresh and try again.",
-        variant: "destructive",
-      });
-    }
-
-    setLoading(false);
   };
 
   useEffect(() => {
-    if (authLoading) {
-      return;
-    }
-
+    if (authLoading) return;
     if (!user || !isAdminUser) {
       navigate("/admin/login", { replace: true });
       return;
     }
-
     loadAdminData();
   }, [authLoading, user, isAdminUser, navigate]);
 
-  if (authLoading || !user || !isAdminUser) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <p className="text-sm text-muted-foreground">Checking admin session...</p>
-      </div>
-    );
-  }
-
-  const title = useMemo(() => {
-    switch (activeOption) {
-      case "manage-garage":
-        return "Manage Garage";
-      case "garage-wise-staff":
-        return "Garage Wise Staff";
-      case "manage-customer":
-        return "Manage User / Customer";
-      case "manage-all-users":
-        return "Manage All Users";
-      case "garage-contact":
-        return "Contact for All Garage";
-      default:
-        return "Admin";
+  const updateGarageEditField = (id: string, field: string, value: any, type: "garage" | "contact") => {
+    if (type === "garage") {
+      setGarageEdits((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+    } else {
+      setContactEdits((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
     }
-  }, [activeOption]);
-
-  const filteredGarages = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return garages;
-
-    return garages.filter((garage) => {
-      const stack = [garage.name, garage.addressState, garage.addressCountry, garage.contactPhone]
-        .join(" ")
-        .toLowerCase();
-      return stack.includes(query);
-    });
-  }, [garages, search]);
-
-  const filteredBookings = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return bookings;
-
-    return bookings.filter((booking) => {
-      const stack = [
-        booking.trackingId,
-        booking.name,
-        booking.email,
-        booking.phone,
-        booking.vehicle,
-        booking.status,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return stack.includes(query);
-    });
-  }, [bookings, search]);
-
-  const totalStaff = useMemo(
-    () => garages.reduce((sum, garage) => sum + (garage.mechanicsCount || 0), 0),
-    [garages]
-  );
-
-  const customerSummaries = useMemo(() => {
-    const map = new Map<string, CustomerSummary>();
-
-    for (const booking of filteredBookings) {
-      const key = booking.email || `unknown-${booking.trackingId}`;
-      const existing = map.get(key);
-
-      if (!existing) {
-        map.set(key, {
-          email: booking.email || "unknown@example.com",
-          name: booking.name || "Unknown Customer",
-          phone: booking.phone || "",
-          totalBookings: 1,
-          totalSpent: booking.total || 0,
-          lastBookingAt: booking.createdAt || booking.date,
-        });
-        continue;
-      }
-
-      existing.totalBookings += 1;
-      existing.totalSpent += booking.total || 0;
-
-      const currentDate = new Date(existing.lastBookingAt).getTime();
-      const nextDate = new Date(booking.createdAt || booking.date).getTime();
-      if (!Number.isNaN(nextDate) && (Number.isNaN(currentDate) || nextDate > currentDate)) {
-        existing.lastBookingAt = booking.createdAt || booking.date;
-      }
-
-      if (!existing.phone && booking.phone) {
-        existing.phone = booking.phone;
-      }
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.totalBookings - a.totalBookings);
-  }, [filteredBookings]);
-
-  const selectedCustomerBookings = useMemo(
-    () => filteredBookings.filter((booking) => booking.email === selectedCustomerEmail),
-    [filteredBookings, selectedCustomerEmail]
-  );
-
-  const usersList = useMemo(() => {
-    const adminRow = {
-      id: user?.id || "admin-local",
-      name: user?.name || "Admin",
-      email: user?.email || "admin@garage.com",
-      role: "admin",
-      source: "Auth",
-    };
-
-    const customerRows = customerSummaries.map((item, index) => ({
-      id: `customer-${index + 1}`,
-      name: item.name,
-      email: item.email,
-      role: "customer",
-      source: `${item.totalBookings} bookings`,
-    }));
-
-    return [adminRow, ...customerRows];
-  }, [customerSummaries, user]);
-
-  const updateGarageEditField = (
-    id: string,
-    field: keyof Garage,
-    value: string | number,
-    mode: "garage" | "contact"
-  ) => {
-    if (mode === "garage") {
-      setGarageEdits((prev) => ({
-        ...prev,
-        [id]: {
-          ...prev[id],
-          [field]: value,
-        },
-      }));
-      return;
-    }
-
-    setContactEdits((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value,
-      },
-    }));
   };
 
-  const saveGaragePatch = async (
-    id: string,
-    patch: Record<string, unknown>,
-    successTitle: string,
-    successDescription: string
-  ) => {
+  const saveGaragePatch = async (id: string, patch: Partial<Garage>, title: string, successMsg: string) => {
     setSavingGarageId(id);
-    const { error } = await api.updateGarageWithFallback(id, patch);
+    const { error } = await api.updateGarageWithFallback(id, patch as Record<string, unknown>);
+    setSavingGarageId(null);
 
     if (error) {
-      toast({
-        title: "Save failed",
-        description: error,
-        variant: "destructive",
-      });
-      setSavingGarageId(null);
-      return;
+      toast({ title: "Save failed", description: error, variant: "destructive" });
+    } else {
+      toast({ title, description: successMsg });
+      loadAdminData();
     }
-
-    setGarages((prev) =>
-      prev.map((garage) => (garage.id === id ? { ...garage, ...(patch as Partial<Garage>) } : garage))
-    );
-
-    toast({
-      title: successTitle,
-      description: successDescription,
-    });
-
-    setSavingGarageId(null);
   };
 
   const deleteGarage = async (id: string) => {
-    const confirmed = window.confirm("Delete this garage?");
-    if (!confirmed) return;
-
+    if (!window.confirm("Are you sure you want to delete this garage?")) return;
     setDeletingGarageId(id);
     const { error } = await api.deleteGarageWithFallback(id);
-
-    if (error) {
-      toast({
-        title: "Delete failed",
-        description: error,
-        variant: "destructive",
-      });
-      setDeletingGarageId(null);
-      return;
-    }
-
-    setGarages((prev) => prev.filter((garage) => garage.id !== id));
-    toast({ title: "Garage deleted", description: "Garage has been removed." });
     setDeletingGarageId(null);
-  };
-
-  const updateBookingStatus = async (trackingId: string, status: string) => {
-    setUpdatingTrackingId(trackingId);
-    const { error } = await api.updateBookingStatus(trackingId, status);
 
     if (error) {
-      toast({ title: "Status update failed", description: error, variant: "destructive" });
-      setUpdatingTrackingId(null);
-      return;
+      toast({ title: "Delete failed", description: error, variant: "destructive" });
+    } else {
+      toast({ title: "Garage deleted", description: "The garage was removed from the database." });
+      loadAdminData();
     }
-
-    setBookings((prev) => prev.map((item) => (item.trackingId === trackingId ? { ...item, status } : item)));
-    toast({ title: "Booking updated", description: `Tracking ${trackingId} is now ${status}.` });
-    setUpdatingTrackingId(null);
   };
+
+  const filteredGarages = useMemo(() => {
+    const query = search.toLowerCase();
+    return garages.filter(g => g.name.toLowerCase().includes(query) || g.addressState.toLowerCase().includes(query));
+  }, [garages, search]);
+
+  const customerSummaries = useMemo(() => {
+    const map = new Map<string, CustomerSummary>();
+    for (const b of bookings) {
+      const email = b.email || "unknown@auto.com";
+      const existing = map.get(email);
+      if (existing) {
+        existing.totalBookings += 1;
+        existing.totalSpent += (b.total || 0);
+      } else {
+        map.set(email, { email, name: b.name, phone: b.phone, totalBookings: 1, totalSpent: b.total || 0, lastBookingAt: b.createdAt });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalSpent - a.totalSpent);
+  }, [bookings]);
+
+  const usersList = useMemo(() => {
+    return users.map(u => ({
+      id: u.id,
+      name: u.name || "No name",
+      email: u.email,
+      role: u.role || "user",
+      source: "Database"
+    }));
+  }, [users]);
+
+  const analytics = useMemo(() => {
+    const normalizeStatus = (value: string) => value.replace(/[\s_]+/g, "-").toLowerCase();
+
+    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.total || 0), 0);
+    const totalBookings = bookings.length;
+    const completedCount = bookings.filter((booking) => normalizeStatus(booking.status) === "completed").length;
+    const pendingCount = bookings.filter((booking) => normalizeStatus(booking.status) === "pending").length;
+    const inProgressCount = bookings.filter((booking) => normalizeStatus(booking.status) === "in-progress").length;
+    const cancellationCount = bookings.filter((booking) => normalizeStatus(booking.status) === "cancelled").length;
+
+    const completionRate = totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0;
+    const cancellationRate = totalBookings > 0 ? Math.round((cancellationCount / totalBookings) * 100) : 0;
+    const averageOrderValue = totalBookings > 0 ? Math.round(totalRevenue / totalBookings) : 0;
+
+    const activeGarages = new Set(bookings.map((booking) => booking.garageId).filter(Boolean)).size;
+
+    const garageLookup = new Map(garages.map((garage) => [garage.id, garage.name]));
+    const garageRevenueMap = new Map<string, number>();
+    bookings.forEach((booking) => {
+      const current = garageRevenueMap.get(booking.garageId) || 0;
+      garageRevenueMap.set(booking.garageId, current + (booking.total || 0));
+    });
+
+    const garageRevenueRows = Array.from(garageRevenueMap.entries())
+      .map(([garageId, revenue]) => ({
+        garageId,
+        garageName: garageLookup.get(garageId) || "Unknown Garage",
+        revenue,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    const maxGarageRevenue = garageRevenueRows[0]?.revenue || 0;
+
+    const statusCounts = bookingStatuses.map((status) => {
+      const count = bookings.filter((booking) => normalizeStatus(booking.status) === status).length;
+      return {
+        status,
+        count,
+        percentage: totalBookings > 0 ? Math.round((count / totalBookings) * 100) : 0,
+      };
+    });
+
+    const now = new Date();
+    const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const monthLabel = (date: Date) => date.toLocaleString(undefined, { month: "short" });
+
+    const months = Array.from({ length: 6 }, (_, index) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      return {
+        key: monthKey(d),
+        label: monthLabel(d),
+        bookings: 0,
+        revenue: 0,
+      };
+    });
+
+    const monthIndexMap = new Map(months.map((m, index) => [m.key, index]));
+
+    bookings.forEach((booking) => {
+      const parsed = new Date(booking.date || booking.createdAt);
+      if (Number.isNaN(parsed.getTime())) return;
+      const index = monthIndexMap.get(monthKey(parsed));
+      if (index === undefined) return;
+
+      months[index].bookings += 1;
+      months[index].revenue += booking.total || 0;
+    });
+
+    const maxMonthlyRevenue = months.reduce((max, month) => Math.max(max, month.revenue), 0);
+
+    return {
+      totalRevenue,
+      totalBookings,
+      completedCount,
+      pendingCount,
+      inProgressCount,
+      cancellationCount,
+      completionRate,
+      cancellationRate,
+      averageOrderValue,
+      activeGarages,
+      garageRevenueRows,
+      maxGarageRevenue,
+      statusCounts,
+      months,
+      maxMonthlyRevenue,
+      topCustomers: customerSummaries.slice(0, 5),
+    };
+  }, [bookings, garages, customerSummaries]);
 
   const renderSection = () => {
-    if (loading) {
-      return <p className="text-sm text-muted-foreground">Loading data...</p>;
+    if (activeOption === "analytics") {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card className="card-simple">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Revenue</p>
+                    <p className="text-2xl font-bold">₹{analytics.totalRevenue.toLocaleString()}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Completion Rate</p>
+                    <p className="text-2xl font-bold">{analytics.completionRate}%</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-yellow-500/10 rounded-xl flex items-center justify-center text-yellow-500">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">AOV</p>
+                    <p className="text-2xl font-bold">₹{analytics.averageOrderValue.toLocaleString()}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center text-red-500">
+                    <Filter className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cancellation Rate</p>
+                    <p className="text-2xl font-bold">{analytics.cancellationRate}%</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card className="card-simple">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Bookings</p>
+                <p className="text-2xl font-bold mt-2">{analytics.totalBookings}</p>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">In Progress</p>
+                <p className="text-2xl font-bold mt-2">{analytics.inProgressCount}</p>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Pending</p>
+                <p className="text-2xl font-bold mt-2">{analytics.pendingCount}</p>
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Active Garages</p>
+                <p className="text-2xl font-bold mt-2">{analytics.activeGarages || garages.length}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card className="card-simple">
+              <CardHeader><CardTitle>Garage Revenue Leaderboard</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                {analytics.garageRevenueRows.map((row, idx) => (
+                  <div key={row.garageId} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold">{idx + 1}. {row.garageName}</span>
+                      <span className="font-bold text-primary">₹{row.revenue.toLocaleString()}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${analytics.maxGarageRevenue > 0 ? Math.max((row.revenue / analytics.maxGarageRevenue) * 100, 4) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {analytics.garageRevenueRows.length === 0 ? <p className="text-sm text-muted-foreground">No revenue data available.</p> : null}
+              </CardContent>
+            </Card>
+            <Card className="card-simple">
+              <CardHeader><CardTitle>Status Distribution</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {analytics.statusCounts.map((item) => (
+                  <div key={item.status} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="capitalize">{item.status.replace(/-/g, " ")}</span>
+                      <span className="font-bold">{item.count} ({item.percentage}%)</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${item.percentage}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card className="card-simple">
+              <CardHeader><CardTitle>6-Month Revenue Trend</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {analytics.months.map((month) => (
+                  <div key={month.key} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold">{month.label}</span>
+                      <span className="font-bold">₹{month.revenue.toLocaleString()} • {month.bookings} bookings</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${analytics.maxMonthlyRevenue > 0 ? Math.max((month.revenue / analytics.maxMonthlyRevenue) * 100, 4) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="card-simple">
+              <CardHeader><CardTitle>Top Customers</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {analytics.topCustomers.map((customer, idx) => (
+                  <div key={customer.email} className="flex items-center justify-between py-2 border-b last:border-0 text-sm">
+                    <div>
+                      <p className="font-semibold">{idx + 1}. {customer.name || customer.email}</p>
+                      <p className="text-xs text-muted-foreground">{customer.totalBookings} bookings</p>
+                    </div>
+                    <p className="font-bold text-primary">₹{customer.totalSpent.toLocaleString()}</p>
+                  </div>
+                ))}
+                {analytics.topCustomers.length === 0 ? <p className="text-sm text-muted-foreground">No customer activity available.</p> : null}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
     }
 
     if (activeOption === "manage-garage") {
       return (
         <div className="space-y-4">
-          {filteredGarages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No garages found.</p>
-          ) : (
-            filteredGarages.map((garage) => {
-              const draft = garageEdits[garage.id] || {};
-              const name = String(draft.name ?? garage.name);
-              const addressState = String(draft.addressState ?? garage.addressState);
-              const addressCountry = String(draft.addressCountry ?? garage.addressCountry);
-
-              return (
-                <div key={garage.id} className="card-simple p-5 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Garage Name</label>
-                      <Input
-                        value={name}
-                        onChange={(event) => updateGarageEditField(garage.id, "name", event.target.value, "garage")}
-                        placeholder="Garage name"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">State</label>
-                      <Input
-                        value={addressState}
-                        onChange={(event) =>
-                          updateGarageEditField(garage.id, "addressState", event.target.value, "garage")
-                        }
-                        placeholder="State"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Country</label>
-                      <Input
-                        value={addressCountry}
-                        onChange={(event) =>
-                          updateGarageEditField(garage.id, "addressCountry", event.target.value, "garage")
-                        }
-                        placeholder="Country"
-                      />
-                    </div>
+          {filteredGarages.map((garage) => {
+            const draft = garageEdits[garage.id] || {};
+            const name = draft.name ?? garage.name;
+            const addressState = draft.addressState ?? garage.addressState;
+            return (
+              <Card key={garage.id} className="card-simple p-5">
+                <div className="grid md:grid-cols-3 gap-4 mb-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">Name</label>
+                    <Input value={name} onChange={e => updateGarageEditField(garage.id, "name", e.target.value, "garage")} />
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50">
-                    <p className="text-[10px] text-muted-foreground uppercase font-medium">Created: {toDateLabel(garage.createdAt)}</p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={savingGarageId === garage.id}
-                        onClick={() =>
-                          saveGaragePatch(
-                            garage.id,
-                            { name, addressState, addressCountry },
-                            "Garage updated",
-                            "Garage details saved successfully."
-                          )
-                        }
-                      >
-                        {savingGarageId === garage.id ? "Saving..." : "Save"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={deletingGarageId === garage.id}
-                        onClick={() => deleteGarage(garage.id)}
-                      >
-                        {deletingGarageId === garage.id ? "Deleting..." : "Delete"}
-                      </Button>
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">State</label>
+                    <Input value={addressState} onChange={e => updateGarageEditField(garage.id, "addressState", e.target.value, "garage")} />
+                  </div>
+                  <div className="flex items-end gap-2 pb-0.5">
+                    <Button size="sm" onClick={() => saveGaragePatch(garage.id, { name, addressState }, "Updated", "Done")}>Save</Button>
+                    <Button size="sm" variant="destructive" onClick={() => deleteGarage(garage.id)}>Delete</Button>
                   </div>
                 </div>
-              );
-            })
-          )}
-        </div>
-      );
-    }
-
-    if (activeOption === "garage-wise-staff") {
-      return (
-        <div className="space-y-3">
-          {filteredGarages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No garages found.</p>
-          ) : (
-            filteredGarages.map((garage) => {
-              const draft = garageEdits[garage.id] || {};
-              const mechanicsCount = Number(draft.mechanicsCount ?? garage.mechanicsCount) || 0;
-
-              return (
-                <div key={garage.id} className="card-simple p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="font-semibold text-foreground">{garage.name}</p>
-                    <p className="text-xs text-muted-foreground">Assigned mechanics for this garage.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      className="w-24 h-9"
-                      min={0}
-                      value={mechanicsCount}
-                      onChange={(event) =>
-                        updateGarageEditField(
-                          garage.id,
-                          "mechanicsCount",
-                          Number(event.target.value) || 0,
-                          "garage"
-                        )
-                      }
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        saveGaragePatch(
-                          garage.id,
-                          { mechanicsCount },
-                          "Staff count updated",
-                          `${garage.name} staff count updated.`
-                        )
-                      }
-                      disabled={savingGarageId === garage.id}
-                    >
-                      {savingGarageId === garage.id ? "Saving..." : "Save"}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      );
-    }
-
-    if (activeOption === "manage-customer") {
-      return (
-        <div className="space-y-4">
-          {customerSummaries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No customer records found.</p>
-          ) : (
-            <>
-              <div className="grid gap-4 md:grid-cols-2">
-                {customerSummaries.map((customer) => (
-                  <button
-                    key={customer.email}
-                    type="button"
-                    onClick={() => setSelectedCustomerEmail(customer.email)}
-                    className={`card-simple p-4 text-left transition-all ${selectedCustomerEmail === customer.email
-                        ? "ring-2 ring-primary border-transparent bg-primary/5"
-                        : ""
-                      }`}
-                  >
-                    <p className="font-semibold text-foreground">{customer.name}</p>
-                    <p className="text-xs text-muted-foreground">{customer.email}</p>
-                    <div className="mt-3 flex items-center gap-4 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      <span className="bg-secondary px-2 py-0.5 rounded">{customer.totalBookings} bookings</span>
-                      <span className="bg-secondary px-2 py-0.5 rounded">₹{customer.totalSpent.toLocaleString()}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="card-simple p-5 space-y-4 mt-6">
-                <p className="font-bold text-sm uppercase tracking-widest text-muted-foreground">Customer Bookings</p>
-                {selectedCustomerBookings.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No bookings for selected customer.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedCustomerBookings.map((booking) => (
-                      <div
-                        key={booking.trackingId}
-                        className="rounded-lg border border-border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-muted/30"
-                      >
-                        <div>
-                          <p className="font-bold text-xs uppercase text-primary tracking-widest">{booking.trackingId}</p>
-                          <p className="font-medium text-sm mt-1">{booking.vehicle}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {toDateLabel(booking.date)} {booking.time}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Badge variant="outline" className="font-bold">₹{booking.total.toLocaleString()}</Badge>
-                          <select
-                            className="h-9 rounded-md border border-input bg-background px-3 text-xs font-medium"
-                            value={booking.status}
-                            onChange={(event) => updateBookingStatus(booking.trackingId, event.target.value)}
-                            disabled={updatingTrackingId === booking.trackingId}
-                          >
-                            {bookingStatuses.map((status) => (
-                              <option key={status} value={status}>
-                                {status.toUpperCase()}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+              </Card>
+            );
+          })}
         </div>
       );
     }
@@ -591,183 +544,94 @@ const Admin = () => {
     if (activeOption === "manage-all-users") {
       return (
         <div className="space-y-3">
-          {usersList.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No user records found.</p>
-          ) : (
-            usersList.map((item) => (
-              <div key={`${item.role}-${item.email}`} className="card-simple p-4 flex items-center justify-between gap-3 bg-card">
-                <div>
-                  <p className="font-semibold text-foreground">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.email}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant={item.role === "admin" ? "default" : "secondary"} className="uppercase font-bold text-[10px]">
-                    {item.role}
-                  </Badge>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{item.source}</p>
-                </div>
+          {usersList.map(u => (
+            <Card key={u.id} className="card-simple p-4 flex items-center justify-between">
+              <div>
+                <p className="font-bold">{u.name}</p>
+                <p className="text-xs text-muted-foreground">{u.email}</p>
               </div>
-            ))
-          )}
+              <select
+                value={u.role}
+                onChange={async (e) => {
+                  const { error } = await api.updateUserRoleApi(u.id, e.target.value);
+                  if (!error) { toast({ title: "Role Updated" }); loadAdminData(); }
+                }}
+                className="h-8 text-xs font-bold uppercase px-2 rounded border"
+              >
+                <option value="customer">Customer</option>
+                <option value="manager">Manager</option>
+                <option value="mechanic">Mechanic</option>
+                <option value="admin">Admin</option>
+              </select>
+            </Card>
+          ))}
         </div>
       );
     }
 
-    return (
-      <div className="space-y-4">
-        {filteredGarages.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No garages found.</p>
-        ) : (
-          filteredGarages.map((garage) => {
-            const draft = contactEdits[garage.id] || {};
-            const contactPhone = String(draft.contactPhone ?? garage.contactPhone);
-            const mapUrl = String(draft.mapUrl ?? garage.mapUrl);
-
-            return (
-              <div key={garage.id} className="card-simple p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-bold text-lg text-foreground">{garage.name}</p>
-                  <div className="text-[10px] font-bold uppercase text-muted-foreground flex items-center gap-1.5">
-                    <MapPin className="h-3 w-3" />
-                    {[garage.addressState, garage.addressCountry].filter(Boolean).join(", ")}
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Phone Number</label>
-                    <Input
-                      value={contactPhone}
-                      onChange={(event) => updateGarageEditField(garage.id, "contactPhone", event.target.value, "contact")}
-                      placeholder="Phone number"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Map URL</label>
-                    <Input
-                      value={mapUrl}
-                      onChange={(event) => updateGarageEditField(garage.id, "mapUrl", event.target.value, "contact")}
-                      placeholder="Map URL"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  {mapUrl ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={mapUrl} target="_blank" rel="noreferrer">Open Map</a>
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      saveGaragePatch(
-                        garage.id,
-                        { contactPhone, mapUrl },
-                        "Contact updated",
-                        `${garage.name} contact info updated.`
-                      )
-                    }
-                    disabled={savingGarageId === garage.id}
-                  >
-                    {savingGarageId === garage.id ? "Saving..." : "Save Changes"}
-                  </Button>
-                </div>
+    if (activeOption === "manage-work-orders") {
+      return (
+        <div className="space-y-4">
+          {workOrders.map(order => (
+            <Card key={order.id} className="card-simple p-4 flex items-center justify-between">
+              <div>
+                <p className="font-bold uppercase text-primary text-[10px]">{order.id.slice(0, 8)}</p>
+                <p className="font-semibold">{order.vehicle}</p>
+                <p className="text-xs text-muted-foreground">{order.customer} • {order.service}</p>
+                <p className="text-xs text-muted-foreground">Staff ID: {order.assignedTo}</p>
               </div>
-            );
-          })
-        )}
-      </div>
-    );
+              <Badge>{order.status}</Badge>
+            </Card>
+          ))}
+        </div>
+      )
+    }
+
+    return <div className="p-10 text-center text-muted-foreground">Section under construction or coming soon.</div>;
   };
 
+  if (loading) return null;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border shadow-sm">
-        <div className="mx-auto w-full max-w-7xl px-4">
-          <div className="flex h-14 items-center gap-8 overflow-x-auto whitespace-nowrap scrollbar-hide">
-            {navOptions.map((option) => {
-              const isActive = activeOption === option.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setActiveOption(option.key)}
-                  className={`text-xs font-bold uppercase tracking-[0.15em] transition-all duration-300 ${isActive ? "text-primary border-b-2 border-primary py-4 mt-0.5" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="fixed top-16 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b">
+        <div className="page-shell flex items-center gap-6 h-12 overflow-x-auto scrollbar-hide">
+          {navOptions.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setActiveOption(opt.key)}
+              className={`text-[10px] font-bold uppercase tracking-widest whitespace-nowrap h-full px-2 border-b-2 transition-all ${activeOption === opt.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 pt-8 pb-12">
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
-          <Card className="border-none shadow-sm bg-muted/50">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Garages</p>
-                <p className="text-2xl font-bold mt-1">{garages.length}</p>
+      <main className="flex-1 pt-32 pb-12">
+        <div className="page-shell max-w-7xl">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <h1 className="text-4xl font-display text-foreground">Admin Control</h1>
+              <p className="text-muted-foreground">System-wide management and performance insights.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input placeholder="Search everything..." className="pl-9 h-10" value={search} onChange={e => setSearch(e.target.value)} />
               </div>
-              <Building2 className="h-6 w-6 text-primary/60" />
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-muted/50">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Staff</p>
-                <p className="text-2xl font-bold mt-1">{totalStaff}</p>
-              </div>
-              <Users className="h-6 w-6 text-primary/60" />
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-muted/50">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Users</p>
-                <p className="text-2xl font-bold mt-1">{usersList.length}</p>
-              </div>
-              <UserCog className="h-6 w-6 text-primary/60" />
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-muted/50">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bookings</p>
-                <p className="text-2xl font-bold mt-1">{bookings.length}</p>
-              </div>
-              <Mail className="h-6 w-6 text-primary/60" />
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">{title}</h2>
-            <div className="flex w-full max-w-2xl items-center gap-3 md:justify-end">
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search..."
-                  className="pl-9 h-10 border-none bg-muted/50 focus-visible:ring-primary/30"
-                />
-              </div>
-              {activeOption === "manage-garage" ? (
-                <Button asChild className="h-10 whitespace-nowrap">
-                  <Link to="/garage/add">
-                    <Plus className="h-4 w-4" />
-                    Add Garage
-                  </Link>
+              {activeOption === "manage-garage" && (
+                <Button asChild className="gap-2">
+                  <Link to="/garage/add"><Plus className="w-4 h-4" /> Add Garage</Link>
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
+
           {renderSection()}
         </div>
       </main>
+      <Footer />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -6,68 +6,53 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ShieldCheck, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Wrench, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/useAuth";
-import { supabase } from "@/lib/supabaseClient";
 import { getRoleDefaultCredentials } from "@/lib/defaultCredentials";
 
-const adminDefaults = getRoleDefaultCredentials("admin");
+const staffDefaults = getRoleDefaultCredentials("staff");
 
-export default function AdminLogin() {
+export default function StaffLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { login, logout, user, loading: authLoading } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (authLoading) return;
-    if (user?.role === "admin") {
-      navigate("/admin", { replace: true });
+    if (String(user?.role || "").toLowerCase() === "staff" || String(user?.role || "").toLowerCase() === "admin") {
+      navigate("/staff", { replace: true });
     }
   }, [authLoading, navigate, user]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
     setAuthError(null);
 
     try {
-      const nextUser = await login(email, password, undefined, rememberMe);
-
+      const nextUser = await login(email.trim(), password, undefined, rememberMe);
       if (!nextUser?.id) {
-        throw new Error("Unable to create session. Please try again.");
+        throw new Error("Unable to sign in. Please try again.");
       }
 
-      let isAdmin = String(nextUser.role || "").toLowerCase() === "admin";
-
-      if (!isAdmin) {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", nextUser.id)
-          .maybeSingle();
-
-        if (!profileError) {
-          isAdmin = String(profile?.role || "").toLowerCase() === "admin";
-        }
+      const role = String(nextUser.role || "").toLowerCase();
+      if (role !== "staff" && role !== "admin") {
+        throw new Error("Access denied. Staff role required.");
       }
-
-      if (!isAdmin) {
-        await logout();
-        throw new Error("Access denied. Admin role required.");
-      }
-
-      navigate("/admin", { replace: true });
 
       toast({
-        title: "Admin login successful",
-        description: "Redirecting to admin dashboard...",
+        title: "Staff login successful",
+        description: "Redirecting to staff dashboard...",
       });
+
+      navigate("/staff", { replace: true });
     } catch (error: any) {
       const message = error?.message || "Invalid credentials";
       setAuthError(message);
@@ -82,8 +67,8 @@ export default function AdminLogin() {
   };
 
   const handleUseDefaultCredentials = () => {
-    setEmail(adminDefaults.email);
-    setPassword(adminDefaults.password);
+    setEmail(staffDefaults.email);
+    setPassword(staffDefaults.password);
     setAuthError(null);
   };
 
@@ -95,17 +80,17 @@ export default function AdminLogin() {
             <Card className="border-2">
               <CardHeader className="text-center space-y-2">
                 <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
-                  <ShieldCheck className="w-8 h-8 text-primary" />
+                  <Wrench className="w-8 h-8 text-primary" />
                 </div>
-                <CardTitle className="text-3xl">Admin Login</CardTitle>
-                <CardDescription>Sign in to access the admin dashboard</CardDescription>
+                <CardTitle className="text-3xl">Staff Login</CardTitle>
+                <CardDescription>Sign in to access your staff dashboard</CardDescription>
               </CardHeader>
 
               <CardContent>
                 <div className="mb-4 rounded-md border bg-muted/40 p-3 text-sm">
-                  <p className="font-medium">Default Admin ID</p>
-                  <p className="text-muted-foreground">{adminDefaults.email}</p>
-                  <p className="mt-1 text-muted-foreground">Password: {adminDefaults.password}</p>
+                  <p className="font-medium">Default Staff ID</p>
+                  <p className="text-muted-foreground">{staffDefaults.email}</p>
+                  <p className="mt-1 text-muted-foreground">Password: {staffDefaults.password}</p>
                   <Button type="button" variant="outline" size="sm" className="mt-2" onClick={handleUseDefaultCredentials}>
                     Use default credentials
                   </Button>
@@ -115,6 +100,7 @@ export default function AdminLogin() {
                     {authError}
                   </div>
                 ) : null}
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-base">Email Address</Label>
@@ -123,9 +109,9 @@ export default function AdminLogin() {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="admin@email.com"
+                        placeholder="staff@email.com"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(event) => setEmail(event.target.value)}
                         required
                         className="pl-10"
                       />
@@ -141,13 +127,13 @@ export default function AdminLogin() {
                         type={showPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(event) => setPassword(event.target.value)}
                         required
                         className="pl-10 pr-10"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
+                        onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -159,19 +145,14 @@ export default function AdminLogin() {
                     <input
                       type="checkbox"
                       checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
+                      onChange={(event) => setRememberMe(event.target.checked)}
                       className="h-4 w-4 rounded border-border accent-primary"
                     />
                     Keep me signed in
                   </label>
 
-                  <Button
-                    type="submit"
-                    className="w-full mt-6"
-                    size="lg"
-                    disabled={loading}
-                  >
-                    {loading ? "Signing in..." : "Sign In as Admin"}
+                  <Button type="submit" className="w-full mt-6" size="lg" disabled={loading}>
+                    {loading ? "Signing in..." : "Sign In as Staff"}
                   </Button>
                 </form>
 

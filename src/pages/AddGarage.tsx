@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api-client";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 
 const countryOptions = ["India", "United States", "United Kingdom", "Canada", "Australia"];
 
@@ -30,6 +30,8 @@ export default function AddGarage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    operatorEmail: "",
+    operatorPassword: "",
     logoUrl: "",
     openTime: "",
     contactPhone: "",
@@ -92,6 +94,8 @@ export default function AddGarage() {
       const garageData = {
         ownerId: user.id,
         name: form.name.trim(),
+        operatorEmail: form.operatorEmail.trim().toLowerCase(),
+        operatorPassword: form.operatorPassword,
         openTime: form.openTime.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         addressCountry: form.addressCountry.trim() || null,
@@ -115,9 +119,27 @@ export default function AddGarage() {
         throw new Error(error);
       }
 
+      const operatorName = `${form.name.trim() || "Garage"} Operator`;
+      const operatorRegister = await api.register(
+        operatorName,
+        form.operatorEmail.trim().toLowerCase(),
+        form.operatorPassword,
+        {
+        autoLogin: false,
+        }
+      );
+
+      if (operatorRegister.error) {
+        const message = String(operatorRegister.error || "").toLowerCase();
+        const alreadyExists = message.includes("already") || message.includes("registered");
+        if (!alreadyExists) {
+          throw new Error(operatorRegister.error);
+        }
+      }
+
       toast({
         title: "Garage added",
-        description: "Your garage has been published successfully.",
+        description: `Published successfully. Operator login: ${form.operatorEmail.trim().toLowerCase()}`,
       });
 
       navigate("/garages");
@@ -361,6 +383,33 @@ export default function AddGarage() {
                       onCheckedChange={handleCheckbox}
                     />
                     <Label htmlFor="sellsSecondHand">We sell second-hand cars</Label>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="operatorEmail">Operator Email ID</Label>
+                      <Input
+                        id="operatorEmail"
+                        name="operatorEmail"
+                        type="email"
+                        placeholder="operator@garage.com"
+                        value={form.operatorEmail}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="operatorPassword">Operator Default Password</Label>
+                      <Input
+                        id="operatorPassword"
+                        name="operatorPassword"
+                        type="text"
+                        placeholder="abcd@2020"
+                        value={form.operatorPassword}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-3">

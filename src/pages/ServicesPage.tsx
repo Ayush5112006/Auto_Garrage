@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Footer from "@/components/Footer";
+import ThreeDCar from "@/components/ThreeDCar";
 import { Button } from "@/components/ui/button";
 import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, Battery, Gauge, Wrench, Zap, Check, ArrowRight } from "lucide-react";
 import { TiltCard } from "@/components/ui/tilt-card";
@@ -151,12 +152,16 @@ const ServicesPage = () => {
                   <div className="relative h-[400px] md:h-[500px] lg:h-[600px]">
                     <div className="absolute -inset-4 bg-red-500/20 rounded-3xl blur-2xl animate-pulse" />
                     <div className="relative h-full bg-gradient-to-br from-background/80 to-muted/80 backdrop-blur-sm rounded-2xl border border-red-500/20 overflow-hidden shadow-2xl">
-                      <ThreeDCar modelPath="/models/destroyed_car_1_raw_scan.glb" />
+                      <ThreeDCar
+                        modelPath="/models/ferrari.glb"
+                        quality="low"
+                        interactive={false}
+                      />
 
                       {/* Overlay Badge */}
                       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md px-6 py-3 rounded-full border border-red-500/30">
-                        <p className="text-white font-semibold text-center">Accident Recovery</p>
-                        <p className="text-red-400 text-xs text-center">Before Restoration</p>
+                        <p className="text-white font-semibold text-center">Vehicle Service Preview</p>
+                        <p className="text-red-400 text-xs text-center">Fast 3D Load Mode</p>
                       </div>
                     </div>
                   </div>

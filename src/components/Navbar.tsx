@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Wrench } from "lucide-react";
+import { useAuth } from "@/context/useAuth";
+import { Button } from "@/components/ui/button";
 
 interface NavLink {
   name: string;
@@ -10,20 +12,81 @@ interface NavLink {
 const Navbar = (): JSX.Element => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
-  const navLinks: NavLink[] = [
+  const role = String(user?.role || "guest").toLowerCase();
+
+  const guestLinks: NavLink[] = [
     { name: "Home", path: "/" },
     { name: "Garages", path: "/garages" },
-    { name: "Track Order", path: "/track" },
+    { name: "Services", path: "/services" },
+    { name: "Pricing", path: "/pricing" },
     { name: "About", path: "/about" },
     { name: "Contact", path: "/contact" },
-    { name: "Register", path: "/register" },
   ];
 
-  const isActive = (path: string): boolean => location.pathname === path;
+  const customerLinks: NavLink[] = [
+    { name: "Home", path: "/" },
+    { name: "Book", path: "/booking" },
+    { name: "Track", path: "/track" },
+    { name: "Garages", path: "/garages" },
+    { name: "Dashboard", path: "/dashboard" },
+  ];
+
+  const staffLinks: NavLink[] = [
+    { name: "Home", path: "/" },
+    { name: "Staff", path: "/staff" },
+    { name: "Track", path: "/track" },
+    { name: "Garages", path: "/garages" },
+  ];
+
+  const managerLinks: NavLink[] = [
+    { name: "Home", path: "/" },
+    { name: "Garage Host", path: "/garagehost" },
+    { name: "Add Garage", path: "/garage/add" },
+    { name: "Add Staff", path: "/garage/staff/add" },
+  ];
+
+  const adminLinks: NavLink[] = [
+    { name: "Home", path: "/" },
+    { name: "Admin", path: "/admin" },
+    { name: "Garages", path: "/garages" },
+    { name: "Staff", path: "/staff" },
+  ];
+
+  const navLinks: NavLink[] =
+    role === "admin"
+      ? adminLinks
+      : role === "manager"
+        ? managerLinks
+        : role === "staff" || role === "mechanic"
+          ? staffLinks
+          : user
+            ? customerLinks
+            : guestLinks;
+
+  const isAuthPage =
+    location.pathname === "/login" ||
+    location.pathname === "/register" ||
+    location.pathname === "/admin/login" ||
+    location.pathname === "/staff/login" ||
+    location.pathname === "/garage/login";
+
+  const isActive = (path: string): boolean =>
+    path === "/"
+      ? location.pathname === "/"
+      : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const handleLogout = async () => {
+    await logout();
+  };
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/75 backdrop-blur-xl border-b border-border/70">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 group">
@@ -47,19 +110,35 @@ const Navbar = (): JSX.Element => {
                 {link.name}
               </Link>
             ))}
+
+            {user ? (
+              <Button size="sm" variant="outline" onClick={handleLogout}>
+                Logout
+              </Button>
+            ) : !isAuthPage ? (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/login">Login</Link>
+                </Button>
+                <Button size="sm" asChild>
+                  <Link to="/register">Register</Link>
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <button
             className="lg:hidden p-2 text-muted-foreground hover:text-foreground"
             onClick={() => setIsOpen(!isOpen)}
             aria-label="Toggle menu"
+            aria-expanded={isOpen}
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
 
         {isOpen && (
-          <div className="lg:hidden py-4 border-t border-border animate-fade-in">
+          <div className="lg:hidden py-4 border-t border-border animate-in fade-in slide-in-from-top-2 duration-200">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
@@ -71,6 +150,33 @@ const Navbar = (): JSX.Element => {
                 {link.name}
               </Link>
             ))}
+
+            {user ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="block w-full text-left py-3 text-sm font-medium text-muted-foreground hover:text-primary"
+              >
+                Logout
+              </button>
+            ) : !isAuthPage ? (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setIsOpen(false)}
+                  className="block py-3 text-sm font-medium text-muted-foreground hover:text-primary"
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/register"
+                  onClick={() => setIsOpen(false)}
+                  className="block py-3 text-sm font-medium text-muted-foreground hover:text-primary"
+                >
+                  Register
+                </Link>
+              </>
+            ) : null}
           </div>
         )}
       </div>

@@ -235,7 +235,7 @@ All prices displayed in **Indian Rupees (₹)**:
 ## 📝 Notes
 
 - All data is stored locally in the browser (localStorage)
-- PHP API endpoints available at `/php-api/` for future backend integration
+- App uses JavaScript/Supabase flows for authentication and data access
 - Tracking IDs are randomly generated and unique
 - Bookings persist across browser sessions
 - Status updates would come from backend API integration

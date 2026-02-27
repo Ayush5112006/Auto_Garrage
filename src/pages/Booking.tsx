@@ -21,7 +21,6 @@ export const bookingSchema = z.object({
   homeAddress: z.string().min(5, "Address is required").optional(),
   notes: z.string().max(500).optional(),
 });
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { CalendarDays, Clock, Car, User, Mail, Phone, CheckCircle, Truck, Home, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createBooking } from "@/lib/bookings";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 
 const services = [
   { id: "oil-change", name: "Oil Change", price: 2499 },
@@ -130,7 +129,6 @@ const Booking = () => {
   if (isSubmitted) {
     return (
       <div className="min-h-screen">
-        <Navbar />
         <main className="pt-32 pb-24 bg-background">
           <div className="container mx-auto px-4">
             <div className="max-w-lg mx-auto text-center">
@@ -165,7 +163,6 @@ const Booking = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
 

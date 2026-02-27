@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Phone, Clock, ArrowRight, Search } from "lucide-react";
 import { GlitchText } from "@/components/ui/glitch-text";
-import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Garage {
   id: string;
@@ -45,26 +45,69 @@ const normalizeGarage = (raw: Record<string, unknown>): Garage => ({
   reviews: raw.reviews != null ? Number(raw.reviews) : null,
 });
 
-const fallbackImage = "https://images.unsplash.com/photo-1486262715619-67b519e0aeb4?w=500&h=300&fit=crop";
+const fallbackImage = "/placeholder.svg";
 const apiOrigin = (() => {
   try {
-    return new URL(import.meta.env.VITE_API_URL || "http://localhost:3001/api").origin;
+    return new URL(import.meta.env.VITE_API_URL || `${window.location.origin}/api`).origin;
   } catch {
-    return "http://localhost:3001";
+    return window.location.origin;
   }
 })();
 
+const backendOrigin = (() => {
+  try {
+    const configured = (import.meta.env.VITE_API_URL || "").trim();
+    if (/^https?:\/\//i.test(configured)) {
+      return new URL(configured).origin;
+    }
+  } catch {
+    // ignore and fallback
+  }
+
+  if (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+    return "http://localhost:3001";
+  }
+
+  return window.location.origin;
+})();
+
+const normalizeAssetPath = (value: string) => {
+  const normalized = value.replace(/\\+/g, "/").trim();
+  const lower = normalized.toLowerCase();
+
+  const publicUploadsIndex = lower.indexOf("public/uploads/");
+  if (publicUploadsIndex >= 0) {
+    return `/${normalized.slice(publicUploadsIndex + "public/".length)}`;
+  }
+
+  const uploadsIndex = lower.indexOf("/uploads/");
+  if (uploadsIndex >= 0) {
+    return normalized.slice(uploadsIndex);
+  }
+
+  if (lower.startsWith("uploads/")) {
+    return `/${normalized}`;
+  }
+
+  return normalized;
+};
+
 const resolveImageUrl = (value?: string | null) => {
   if (!value) return "";
-  const cleaned = value.trim();
+  const cleaned = normalizeAssetPath(value);
   if (!cleaned || cleaned.toLowerCase() === "null" || cleaned.toLowerCase() === "undefined") return "";
   if (/^(https?:|data:|blob:)/i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith("/uploads/") || cleaned.startsWith("uploads/")) {
+    const uploadsPath = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+    return `${backendOrigin}${uploadsPath}`;
+  }
   if (cleaned.startsWith("/")) return `${apiOrigin}${cleaned}`;
   return `${apiOrigin}/${cleaned}`;
 };
 
 const isProbablyImageUrl = (url: string) => {
   if (!url) return false;
+  if (/^https?:/i.test(url)) return true;
   if (/^data:image\//i.test(url) || /^blob:/i.test(url)) return true;
   if (url.includes("/uploads/") || url.includes("/storage/v1/object/public/")) return true;
   return /\.(png|jpe?g|webp|gif|svg|avif)(\?|#|$)/i.test(url);
@@ -79,6 +122,11 @@ const getGarageImage = (garage: Garage) => {
   return fallbackImage;
 };
 
+const getGarageLogoImage = (garage: Garage) => {
+  const logoImage = resolveImageUrl(garage.logo_url);
+  return isProbablyImageUrl(logoImage) ? logoImage : fallbackImage;
+};
+
 const GarageListing = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [garages, setGarages] = useState<Garage[]>([]);
@@ -91,12 +139,16 @@ const GarageListing = () => {
 
     const loadGarages = async () => {
       setLoading(true);
-      const { data, error } = await api.getGarages();
+      const { data, error } = await supabase
+        .from("garages")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (!isMounted) return;
 
       if (error) {
-        setLoadError(error);
+        setLoadError(error.message || "Failed to load garages");
+        setGarages([]);
       } else {
         setLoadError(null);
         const normalized = Array.isArray(data)
@@ -181,8 +233,15 @@ const GarageListing = () => {
                     <div className="relative h-48 bg-muted overflow-hidden">
                       <img
                         src={getGarageImage(garage)}
+                        data-secondary-src={getGarageLogoImage(garage)}
                         alt={garage.name}
                         onError={(event) => {
+                          const nextSrc = event.currentTarget.dataset.secondarySrc;
+                          if (nextSrc && event.currentTarget.src !== nextSrc) {
+                            event.currentTarget.src = nextSrc;
+                            return;
+                          }
+
                           if (event.currentTarget.src !== fallbackImage) {
                             event.currentTarget.src = fallbackImage;
                           }

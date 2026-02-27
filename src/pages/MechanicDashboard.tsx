@@ -17,11 +17,12 @@ import {
     Settings,
     Calendar
 } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/useAuth";
 import {
     getInventoryItems,
     getStaffProfile,
     getWorkOrdersForStaff,
+    updateWorkOrderStatus,
     type InventoryItem,
     type StaffProfile,
     type WorkOrder,
@@ -53,7 +54,7 @@ const MechanicDashboard = () => {
         Promise.all([
             getStaffProfile(user.id),
             getWorkOrdersForStaff(user.id),
-            getInventoryItems(),
+            getInventoryItems(user.id),
         ])
             .then(([staffProfile, orders, stock]) => {
                 if (!isMounted) return;
@@ -107,6 +108,18 @@ const MechanicDashboard = () => {
         }
     };
 
+    const handleUpdateStatus = async (id: string, newStatus: string) => {
+        try {
+            await updateWorkOrderStatus(id, newStatus);
+            setWorkOrders(prev => prev.map(order => order.id === id ? { ...order, status: newStatus } : order));
+        } catch (error: any) {
+            setErrorMessage("Failed to update status: " + error.message);
+        }
+    };
+
+    const handleAccept = (id: string) => handleUpdateStatus(id, "in-progress");
+    const handleReject = (id: string) => handleUpdateStatus(id, "cancelled");
+
     const formatStatus = (value?: string | null) => {
         if (!value) return "Pending";
         return value
@@ -134,19 +147,6 @@ const MechanicDashboard = () => {
         }
     };
 
-    if (!user) {
-        return (
-            <div className="min-h-screen">
-                <main className="pt-32 pb-24 bg-background">
-                    <div className="container mx-auto px-4 text-center">
-                        <p className="text-muted-foreground">Loading...</p>
-                    </div>
-                </main>
-                <Footer />
-            </div>
-        );
-    }
-
     const stats = useMemo(() => {
         const completedToday = workOrders.filter((order) => (order.status || "").toLowerCase() === "completed").length;
         const pending = workOrders.filter((order) => (order.status || "").toLowerCase() === "pending").length;
@@ -160,6 +160,9 @@ const MechanicDashboard = () => {
             { label: "Low Stock Items", value: `${lowStock}`, icon: AlertCircle, color: "text-red-600" },
         ];
     }, [inventory, workOrders]);
+
+    if (authLoading) return null;
+    if (!user) return null;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -238,60 +241,80 @@ const MechanicDashboard = () => {
                                             <p className="text-sm text-muted-foreground">No work orders assigned.</p>
                                         ) : (
                                             workOrders.map((order) => (
-                                            <Card key={order.id} className="border-l-4 border-l-primary">
-                                                <CardContent className="p-4">
-                                                    <div className="flex items-start justify-between mb-3">
-                                                        <div>
-                                                            <p className="font-mono font-semibold text-primary">{order.id}</p>
-                                                            <p className="font-semibold text-lg">
-                                                                {[order.vehicle_brand, order.vehicle_model, order.vehicle_no]
-                                                                    .filter(Boolean)
-                                                                    .join(" ") || "Vehicle"}
-                                                            </p>
-                                                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                                                <Users className="w-3 h-3" />
-                                                                {order.customer_name || "Customer"}
-                                                            </p>
+                                                <Card key={order.id} className="border-l-4 border-l-primary overflow-hidden">
+                                                    <CardContent className="p-4">
+                                                        <div className="flex items-start justify-between mb-3">
+                                                            <div>
+                                                                <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">{order.id.slice(0, 8)}</p>
+                                                                <p className="font-semibold text-lg">
+                                                                    {[order.vehicle_brand, order.vehicle_model, order.vehicle_no]
+                                                                        .filter(Boolean)
+                                                                        .join(" ") || "Vehicle"}
+                                                                </p>
+                                                                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                                                    <Users className="w-3 h-3" />
+                                                                    {order.customer_name || "Customer"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex flex-col items-end gap-2">
+                                                                <Badge className={getStatusColor(order.status)}>
+                                                                    {formatStatus(order.status)}
+                                                                </Badge>
+                                                                <Badge variant="outline" className={getPriorityColor(order.priority) + " border-none"}>
+                                                                    {order.priority ? formatStatus(order.priority) : "Medium"}
+                                                                </Badge>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Badge className={getStatusColor(order.status)}>
-                                                                {formatStatus(order.status)}
-                                                            </Badge>
-                                                            <Badge className={getPriorityColor(order.priority)}>
-                                                                {order.priority ? formatStatus(order.priority) : "Medium"}
-                                                            </Badge>
-                                                        </div>
-                                                    </div>
 
-                                                    <div className="grid grid-cols-3 gap-4 text-sm">
-                                                        <div>
-                                                            <p className="text-muted-foreground">Service</p>
-                                                            <p className="font-semibold">{order.service_type || "Service"}</p>
+                                                        <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+                                                            <div>
+                                                                <p className="text-muted-foreground text-[10px] uppercase font-bold">Service</p>
+                                                                <p className="font-semibold">{order.service_type || "Service"}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-muted-foreground text-[10px] uppercase font-bold">Est. Time</p>
+                                                                <p className="font-semibold flex items-center gap-1">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    {order.estimated_time || "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-muted-foreground text-[10px] uppercase font-bold">Bay</p>
+                                                                <p className="font-semibold">Bay #{order.assigned_bay ?? "-"}</p>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="text-muted-foreground">Est. Time</p>
-                                                            <p className="font-semibold flex items-center gap-1">
-                                                                <Clock className="w-3 h-3" />
-                                                                {order.estimated_time || "-"}
-                                                            </p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-muted-foreground">Bay</p>
-                                                            <p className="font-semibold">Bay #{order.assigned_bay ?? "-"}</p>
-                                                        </div>
-                                                    </div>
 
-                                                    <div className="flex gap-2 mt-4">
-                                                        <Button size="sm" variant="default" className="flex-1">
-                                                            Update Status
-                                                        </Button>
-                                                        <Button size="sm" variant="outline" className="flex-1">
-                                                            View Details
-                                                        </Button>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        ))}
+                                                        <div className="flex gap-2 border-t pt-4">
+                                                            {(order.status || "").toLowerCase() === "pending" ? (
+                                                                <>
+                                                                    <Button size="sm" onClick={() => handleAccept(order.id)} className="flex-1 bg-green-600 hover:bg-green-700">
+                                                                        Accept Task
+                                                                    </Button>
+                                                                    <Button size="sm" variant="ghost" onClick={() => handleReject(order.id)} className="flex-1 text-red-600 hover:bg-red-50">
+                                                                        Reject
+                                                                    </Button>
+                                                                </>
+                                                            ) : (order.status || "").toLowerCase() === "in-progress" ? (
+                                                                <>
+                                                                    <Button size="sm" onClick={() => handleUpdateStatus(order.id, "completed")} className="flex-1 bg-primary">
+                                                                        Mark Completed
+                                                                    </Button>
+                                                                    <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, "waiting-parts")} className="flex-1">
+                                                                        Wait for Parts
+                                                                    </Button>
+                                                                </>
+                                                            ) : (
+                                                                <Button size="sm" variant="outline" disabled className="flex-1">
+                                                                    Jobs Done
+                                                                </Button>
+                                                            )}
+                                                            <Button size="sm" variant="ghost" className="px-2">
+                                                                Details
+                                                            </Button>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))
                                         )}
                                     </div>
                                 </CardContent>
@@ -320,27 +343,27 @@ const MechanicDashboard = () => {
                                                 const status = getInventoryStatus(item);
                                                 const ratio = item.min_stock > 0 ? (item.quantity / item.min_stock) * 100 : 0;
                                                 return (
-                                            <div key={item.id} className="border rounded-lg p-3">
-                                                <div className="flex items-start justify-between mb-2">
-                                                    <p className="font-semibold text-sm">{item.part_name}</p>
-                                                    <Badge className={getInventoryColor(status)} variant="secondary">
-                                                        {formatStatus(status)}
-                                                    </Badge>
-                                                </div>
-                                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                    <span>Qty: {item.quantity}</span>
-                                                    <span>Min: {item.min_stock}</span>
-                                                </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                                                    <div
-                                                        className={`h-2 rounded-full ${item.quantity >= item.min_stock ? "bg-green-500" :
-                                                            item.quantity > 0 ? "bg-yellow-500" : "bg-red-500"
-                                                            }`}
-                                                        style={{ width: `${Math.min(ratio, 100)}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        );
+                                                    <div key={item.id} className="border rounded-lg p-3">
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <p className="font-semibold text-sm">{item.part_name}</p>
+                                                            <Badge className={getInventoryColor(status)} variant="secondary">
+                                                                {formatStatus(status)}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                            <span>Qty: {item.quantity}</span>
+                                                            <span>Min: {item.min_stock}</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                                                            <div
+                                                                className={`h-2 rounded-full ${item.quantity >= item.min_stock ? "bg-green-500" :
+                                                                    item.quantity > 0 ? "bg-yellow-500" : "bg-red-500"
+                                                                    }`}
+                                                                style={{ width: `${Math.min(ratio, 100)}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
                                             })
                                         )}
                                     </div>

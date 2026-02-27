@@ -134,6 +134,21 @@ npm run dev
 - `rating`, `reviews`
 - `createdAt`, `updatedAt`
 
+### Booking Model
+- `id` (UUID)
+- `trackingId` (unique)
+- `garageId` (optional FK to Garage)
+- `userId` (optional FK to User)
+- `name`, `email`, `phone`
+- `vehicle`
+- `services` (JSON list)
+- `serviceDate`, `time`
+- `deliveryOption`, `deliveryFee`, `homeAddress`
+- `subtotal`, `total`
+- `status` (Pending, Confirmed, etc.)
+- `notes`
+- `createdAt`, `updatedAt`
+
 ## File Uploads
 
 Logo files are uploaded via `multer` and stored in:

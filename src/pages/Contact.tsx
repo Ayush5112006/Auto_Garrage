@@ -45,7 +45,6 @@ const contactInfo = [
 ];
 
 const Contact = () => {
-  console.log('Contact component render', new Date().toISOString());
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
 

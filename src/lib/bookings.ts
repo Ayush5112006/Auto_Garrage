@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+import { api } from "@/lib/api-client";
 
 export type BookingService = {
   id: string;
@@ -43,102 +43,51 @@ export type CreateBookingInput = {
   userId?: string | null;
 };
 
-type BookingRow = {
-  tracking_id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  vehicle: string;
-  services: BookingService[] | null;
-  service_date: string;
-  time: string;
-  delivery_option: string | null;
-  delivery_fee: number | null;
-  home_address: string | null;
-  subtotal: number | null;
-  total: number;
-  status: string;
-  created_at: string;
-  user_id: string | null;
-};
-
-const mapBookingRow = (row: BookingRow): BookingRecord => ({
-  trackingId: row.tracking_id,
-  name: row.name,
-  email: row.email,
-  phone: row.phone,
-  vehicle: row.vehicle,
-  services: row.services ?? [],
-  date: row.service_date,
-  time: row.time,
-  deliveryOption: row.delivery_option,
-  deliveryFee: row.delivery_fee,
-  homeAddress: row.home_address,
-  subtotal: row.subtotal,
-  total: row.total,
-  status: row.status,
-  createdAt: row.created_at,
-  userId: row.user_id,
+const mapBookingResponse = (data: any): BookingRecord => ({
+  trackingId: data.trackingId || data.tracking_id,
+  name: data.name,
+  email: data.email,
+  phone: data.phone,
+  vehicle: data.vehicle,
+  services: Array.isArray(data.services) ? data.services : (typeof data.services === 'string' ? JSON.parse(data.services) : []),
+  date: data.serviceDate || data.service_date || data.date,
+  time: data.time,
+  deliveryOption: data.deliveryOption || data.delivery_option,
+  deliveryFee: data.deliveryFee ?? data.delivery_fee,
+  homeAddress: data.homeAddress || data.home_address,
+  subtotal: data.subtotal,
+  total: data.total ?? data.total_price ?? 0,
+  status: data.status,
+  createdAt: data.createdAt || data.created_at,
+  userId: data.userId || data.user_id,
 });
 
 export async function createBooking(input: CreateBookingInput) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert({
-      tracking_id: input.trackingId,
-      name: input.name,
-      email: input.email,
-      phone: input.phone ?? null,
-      vehicle: input.vehicle,
-      services: input.services,
-      service_date: input.date,
-      time: input.time,
-      delivery_option: input.deliveryOption ?? "none",
-      delivery_fee: input.deliveryFee ?? 0,
-      home_address: input.homeAddress ?? null,
-      subtotal: input.subtotal ?? null,
-      total: input.total,
-      status: input.status,
-      user_id: input.userId ?? null,
-    })
-    .select()
-    .single();
+  const { data, error } = await api.createBookingApi(input);
 
   if (error || !data) {
-    throw error || new Error("Unable to create booking.");
+    throw new Error(error || "Unable to create booking.");
   }
 
-  return mapBookingRow(data as BookingRow);
+  return mapBookingResponse(data);
 }
 
 export async function getBookingByTrackingId(trackingId: string) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select()
-    .eq("tracking_id", trackingId)
-    .single();
+  const { data, error } = await api.getBookingByTrackingIdApi(trackingId);
 
   if (error || !data) {
-    throw error || new Error("Booking not found.");
+    throw new Error(error || "Booking not found.");
   }
 
-  return mapBookingRow(data as BookingRow);
+  return mapBookingResponse(data);
 }
 
 export async function getBookingsForUser(params: { userId?: string; email?: string }) {
-  let query = supabase.from("bookings").select().order("created_at", { ascending: false });
-
-  if (params.userId) {
-    query = query.eq("user_id", params.userId);
-  } else if (params.email) {
-    query = query.eq("email", params.email);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await api.getMyBookingsApi();
 
   if (error) {
-    throw error;
+    throw new Error(error);
   }
 
-  return (data || []).map((row) => mapBookingRow(row as BookingRow));
+  return (data || []).map((row: any) => mapBookingResponse(row));
 }
