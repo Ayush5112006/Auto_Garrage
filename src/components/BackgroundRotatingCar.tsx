@@ -49,6 +49,14 @@ const BackgroundRotatingCar = () => {
                         performance={{ min: 0.5 }}
                         camera={{ position: [0, 0, 15], fov: 40 }}
                         gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
+                        onCreated={({ gl }) => {
+                            const canvas = gl.domElement;
+                            const onLost = (event: Event) => {
+                                event.preventDefault();
+                                setShouldRender3D(false);
+                            };
+                            canvas.addEventListener("webglcontextlost", onLost, { once: true });
+                        }}
                     >
                         <Suspense fallback={null}>
                             <ambientLight intensity={0.5} />

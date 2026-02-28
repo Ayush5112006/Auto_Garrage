@@ -1,4 +1,6 @@
 import { api } from "@/lib/api-client";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 
 export type BookingService = {
   id: string;
@@ -49,7 +51,11 @@ const mapBookingResponse = (data: any): BookingRecord => ({
   email: data.email,
   phone: data.phone,
   vehicle: data.vehicle,
-  services: Array.isArray(data.services) ? data.services : (typeof data.services === 'string' ? JSON.parse(data.services) : []),
+  services: Array.isArray(data.services)
+    ? data.services
+    : typeof data.services === "string"
+      ? JSON.parse(data.services)
+      : [],
   date: data.serviceDate || data.service_date || data.date,
   time: data.time,
   deliveryOption: data.deliveryOption || data.delivery_option,
@@ -61,6 +67,41 @@ const mapBookingResponse = (data: any): BookingRecord => ({
   createdAt: data.createdAt || data.created_at,
   userId: data.userId || data.user_id,
 });
+
+const hasBackendTokenCookie = () =>
+  typeof document !== "undefined" &&
+  document.cookie.split(";").some((part) => part.trim().startsWith("token="));
+
+const getBookingsFromFirestore = async (params: { userId?: string; email?: string }) => {
+  if (!params.userId && !params.email) {
+    return [] as BookingRecord[];
+  }
+
+  try {
+    let q = query(collection(db, "bookings"), orderBy("createdAt", "desc"), limit(100));
+
+    if (params.userId) {
+      q = query(
+        collection(db, "bookings"),
+        where("customerId", "==", params.userId),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
+    } else if (params.email) {
+      q = query(
+        collection(db, "bookings"),
+        where("email", "==", params.email),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
+    }
+
+    const snap = await getDocs(q);
+    return snap.docs.map((doc) => mapBookingResponse({ id: doc.id, ...doc.data() }));
+  } catch {
+    return [] as BookingRecord[];
+  }
+};
 
 export async function createBooking(input: CreateBookingInput) {
   const { data, error } = await api.createBookingApi(input);
@@ -83,9 +124,17 @@ export async function getBookingByTrackingId(trackingId: string) {
 }
 
 export async function getBookingsForUser(params: { userId?: string; email?: string }) {
+  if (!hasBackendTokenCookie()) {
+    return getBookingsFromFirestore(params);
+  }
+
   const { data, error } = await api.getMyBookingsApi();
 
   if (error) {
+    const msg = String(error).toLowerCase();
+    if (msg.includes("auth") || msg.includes("401") || msg.includes("unauthorized")) {
+      return getBookingsFromFirestore(params);
+    }
     throw new Error(error);
   }
 

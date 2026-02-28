@@ -144,6 +144,7 @@ const Admin = () => {
   const isAdminUser = !!user && user.role === "admin";
 
   const loadAdminData = async () => {
+    if (!user || !isAdminUser) return;
     setLoading(true);
     try {
       const [garageResult, bookingResult, userResult, workOrderResult] = await Promise.all([
@@ -187,7 +188,12 @@ const Admin = () => {
       return;
     }
     loadAdminData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, isAdminUser, navigate]);
+
+  if (authLoading || !user || !isAdminUser) {
+    return null;
+  }
 
   const updateGarageEditField = (id: string, field: string, value: any, type: "garage" | "contact") => {
     if (type === "garage") {

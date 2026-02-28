@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { supabaseAdmin } from "../lib/supabase";
+import { adminDb } from "../lib/firebase-admin";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
+
+const bookingsCol = () => adminDb.collection("bookings");
+const garagesCol = () => adminDb.collection("garages");
 
 const normalizeStatus = (value?: string) => {
     const normalized = String(value || "pending").trim().toLowerCase();
@@ -10,92 +13,51 @@ const normalizeStatus = (value?: string) => {
     return normalized;
 };
 
-const getBookingsSelectWithFallback = async (customerId?: string) => {
-    let query = supabaseAdmin
-        .from("bookings")
-        .select(`
-        *,
-        garage:garages (id, garage_name, location),
-        service:services (id, service_name, price)
-      `)
-        .order("created_at", { ascending: false });
-
+const getBookingsList = async (customerId?: string) => {
+    let q: FirebaseFirestore.Query = bookingsCol().orderBy("createdAt", "desc");
     if (customerId) {
-        query = query.eq("customer_id", customerId);
+        q = q.where("customerId", "==", customerId);
     }
-
-    const joined = await query;
-    if (!joined.error) {
-        return joined;
-    }
-
-    let plainQuery = supabaseAdmin
-        .from("bookings")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-    if (customerId) {
-        plainQuery = plainQuery.eq("customer_id", customerId);
-    }
-
-    return plainQuery;
+    const snap = await q.get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
 // Create booking
 router.post("/", authenticate, async (req: AuthRequest, res) => {
     try {
         const {
-            trackingId,
-            name,
-            email,
-            phone,
-            vehicle,
-            services,
-            date,
-            time,
-            deliveryOption,
-            deliveryFee,
-            homeAddress,
-            subtotal,
-            total,
-            status,
-            garage_id,
-            service_id,
-            service_date,
-            total_price,
+            trackingId, name, email, phone, vehicle, services,
+            date, time, deliveryOption, deliveryFee, homeAddress,
+            subtotal, total, status, garage_id, service_id, service_date, total_price,
         } = req.body;
 
         const normalizedStatus = normalizeStatus(status || "pending");
 
-        const bookingPayload = {
-            tracking_id: trackingId || null,
-            customer_id: req.userId,
-            garage_id: garage_id || null,
-            service_id: service_id || null,
+        const bookingPayload: Record<string, unknown> = {
+            trackingId: trackingId || null,
+            customerId: req.userId,
+            garageId: garage_id || null,
+            serviceId: service_id || null,
             name: name || null,
             email: email || null,
             phone: phone || null,
             vehicle: vehicle || null,
             services: Array.isArray(services) ? services : null,
             time: time || null,
-            delivery_option: deliveryOption || null,
-            delivery_fee: deliveryFee ?? 0,
-            home_address: homeAddress || null,
+            deliveryOption: deliveryOption || null,
+            deliveryFee: deliveryFee ?? 0,
+            homeAddress: homeAddress || null,
             subtotal: subtotal ?? total ?? total_price ?? 0,
-            total_price: total_price ?? total ?? subtotal ?? 0,
+            totalPrice: total_price ?? total ?? subtotal ?? 0,
             status: normalizedStatus,
-            service_date: service_date || date || null,
+            serviceDate: service_date || date || null,
             date: date || service_date || null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
 
-        const { data, error } = await supabaseAdmin
-            .from("bookings")
-            .insert(bookingPayload)
-            .select()
-            .single();
-
-        if (error) throw error;
-        res.status(201).json(data);
+        const docRef = await bookingsCol().add(bookingPayload);
+        res.status(201).json({ id: docRef.id, ...bookingPayload });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to create booking" });
     }
@@ -106,40 +68,32 @@ router.get("/track/:trackingId", authenticate, async (req: AuthRequest, res) => 
     try {
         const { trackingId } = req.params;
 
-        let { data, error } = await supabaseAdmin
-            .from("bookings")
-            .select(`
-        *,
-        garage:garages (id, garage_name, location),
-        service:services (id, service_name, price)
-      `)
-            .eq("tracking_id", trackingId)
-            .maybeSingle();
+        const snap = await bookingsCol().where("trackingId", "==", trackingId).limit(1).get();
 
-        if (error) {
-            const fallback = await supabaseAdmin
-                .from("bookings")
-                .select("*")
-                .eq("tracking_id", trackingId)
-                .maybeSingle();
+        if (snap.empty) return res.status(404).json({ error: "Booking not found" });
 
-            data = fallback.data;
-            error = fallback.error;
-        }
-
-        if (error) throw error;
-        if (!data) return res.status(404).json({ error: "Booking not found" });
+        const doc = snap.docs[0];
+        const data = doc.data();
 
         const normalized = {
+            id: doc.id,
             ...data,
-            trackingId: data.tracking_id,
-            deliveryOption: data.delivery_option,
-            deliveryFee: data.delivery_fee,
-            homeAddress: data.home_address,
-            serviceDate: data.service_date,
-            createdAt: data.created_at,
-            userId: data.customer_id,
-            total: data.total_price,
+            trackingId: data.trackingId,
+            tracking_id: data.trackingId,
+            deliveryOption: data.deliveryOption,
+            delivery_option: data.deliveryOption,
+            deliveryFee: data.deliveryFee,
+            delivery_fee: data.deliveryFee,
+            homeAddress: data.homeAddress,
+            home_address: data.homeAddress,
+            serviceDate: data.serviceDate,
+            service_date: data.serviceDate,
+            createdAt: data.createdAt,
+            created_at: data.createdAt,
+            userId: data.customerId,
+            customer_id: data.customerId,
+            total: data.totalPrice,
+            total_price: data.totalPrice,
         };
 
         res.json(normalized);
@@ -152,10 +106,8 @@ router.get("/track/:trackingId", authenticate, async (req: AuthRequest, res) => 
 // Get user bookings
 router.get("/my-bookings", authenticate, async (req: AuthRequest, res) => {
     try {
-        const { data, error } = await getBookingsSelectWithFallback(req.userId);
-
-        if (error) throw error;
-        res.json(data);
+        const bookings = await getBookingsList(req.userId);
+        res.json(bookings);
     } catch (error: any) {
         console.error("My bookings error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch bookings" });
@@ -167,24 +119,8 @@ router.get("/admin", authenticate, async (req: AuthRequest, res) => {
     if (req.userRole !== "admin") return res.status(403).json({ error: "Unauthorized" });
 
     try {
-        let { data, error } = await supabaseAdmin
-            .from("bookings")
-            .select(`
-        *,
-        customer:profiles!customer_id (id, name, email),
-        garage:garages (id, garage_name, location),
-        service:services (id, service_name, price)
-      `)
-            .order("created_at", { ascending: false });
-
-        if (error) {
-            const fallback = await getBookingsSelectWithFallback();
-            data = fallback.data;
-            error = fallback.error;
-        }
-
-        if (error) throw error;
-        res.json(data);
+        const bookings = await getBookingsList();
+        res.json(bookings);
     } catch (error: any) {
         console.error("Admin bookings error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch all bookings" });
@@ -199,40 +135,39 @@ router.patch("/status/:id", authenticate, async (req: AuthRequest, res) => {
         const normalizedStatus = normalizeStatus(status);
         const normalizedRole = String(req.userRole || "").toLowerCase();
 
-        // Check if user is owner of garage or admin
-        const { data: booking } = await supabaseAdmin
-            .from("bookings")
-            .select("id, garage_id, tracking_id")
-            .or(`id.eq.${id},tracking_id.eq.${id}`)
-            .maybeSingle();
+        // Find booking by id or trackingId
+        let bookingDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+        const byId = await bookingsCol().doc(id).get();
+        if (byId.exists) {
+            bookingDoc = byId as any;
+        } else {
+            const byTracking = await bookingsCol().where("trackingId", "==", id).limit(1).get();
+            if (!byTracking.empty) bookingDoc = byTracking.docs[0];
+        }
 
-        if (!booking) return res.status(404).json({ error: "Booking not found" });
+        if (!bookingDoc) return res.status(404).json({ error: "Booking not found" });
 
+        const bookingData = bookingDoc.data()!;
         let canUpdate = normalizedRole === "admin";
 
-        if (!canUpdate && booking.garage_id) {
-            const { data: garage } = await supabaseAdmin
-                .from("garages")
-                .select("owner_id")
-                .eq("id", booking.garage_id)
-                .maybeSingle();
-
-            canUpdate = garage?.owner_id === req.userId;
+        if (!canUpdate && bookingData.garageId) {
+            const garageSnap = await garagesCol().doc(bookingData.garageId).get();
+            if (garageSnap.exists) {
+                canUpdate = garageSnap.data()?.ownerId === req.userId;
+            }
         }
 
         if (!canUpdate) {
             return res.status(403).json({ error: "Unauthorized" });
         }
 
-        const { data: updated, error } = await supabaseAdmin
-            .from("bookings")
-            .update({ status: normalizedStatus })
-            .eq("id", booking.id)
-            .select()
-            .single();
+        await bookingsCol().doc(bookingDoc.id).update({
+            status: normalizedStatus,
+            updatedAt: new Date().toISOString(),
+        });
 
-        if (error) throw error;
-        res.json(updated);
+        const updatedSnap = await bookingsCol().doc(bookingDoc.id).get();
+        res.json({ id: updatedSnap.id, ...updatedSnap.data() });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to update booking status" });
     }

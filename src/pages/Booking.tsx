@@ -214,8 +214,8 @@ const Booking = () => {
                         </div>
                         <span className="font-medium">{service.name}</span>
                       </div>
-                      <span className="font-display text-lg text-primary">
-                        ₹{service.price.toLocaleString('en-IN')}
+                      <span className="font-display text-lg text-foreground">
+                        Rs {service.price.toLocaleString('en-IN')}
                       </span>
                     </label>
                   ))}
@@ -370,7 +370,7 @@ const Booking = () => {
                               {option.id === 'pickup' && <Truck className="w-4 h-4 text-primary" />}
                               {option.id === 'delivery' && <MapPin className="w-4 h-4 text-primary" />}
                               <p className="font-medium">{option.label}</p>
-                              <span className="ml-auto text-primary font-display">+₹{option.price}</span>
+                              <span className="ml-auto text-foreground font-display">+Rs {option.price}</span>
                             </div>
                             <p className="text-sm text-muted-foreground">{option.description}</p>
                           </div>
@@ -410,7 +410,7 @@ const Booking = () => {
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-muted-foreground">Service Total</div>
                       <div className="text-right">
-                        <div className="font-display text-lg text-primary">₹{subtotalINR.toLocaleString('en-IN')}</div>
+                        <div className="font-display text-lg text-foreground">Rs {subtotalINR.toLocaleString('en-IN')}</div>
                       </div>
                     </div>
                     {deliveryFee > 0 && (
@@ -419,20 +419,28 @@ const Booking = () => {
                           Delivery Fee
                           <span className="ml-1 text-xs">({deliveryOptions.find(o => o.id === watchedDeliveryOption)?.label})</span>
                         </div>
-                        <div className="font-display text-lg text-primary">+₹{deliveryFee.toLocaleString('en-IN')}</div>
+                        <div className="font-display text-lg text-foreground">+Rs {deliveryFee.toLocaleString('en-IN')}</div>
                       </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t">
                       <div className="font-semibold">Total Amount</div>
-                      <div className="font-display text-2xl text-primary">₹{totalINR.toLocaleString('en-IN')}</div>
+                      <div className="font-display text-2xl text-foreground">Rs {totalINR.toLocaleString('en-IN')}</div>
                     </div>
                   </div>
 
                   <div className="flex gap-3">
-                    <Button type="submit" className="flex-1" size="lg" disabled={!isValid || isSubmitting}>
+                    <Button
+                      type="submit"
+                      className="flex-1"
+                      size="lg"
+                      disabled={!isValid || isSubmitting}
+                    >
                       Confirm Booking
                     </Button>
                   </div>
+                  {!isValid && (
+                    <p className="text-xs text-muted-foreground">Fill all required fields to enable booking.</p>
+                  )}
                 </CardContent>
               </Card>
             </div>

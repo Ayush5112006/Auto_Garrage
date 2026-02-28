@@ -37,9 +37,25 @@ export default function Register() {
       });
       navigate("/dashboard");
     } catch (error: any) {
+      const message = String(error?.message || "Please try again.");
+      const lower = message.toLowerCase();
+      const alreadyRegistered =
+        lower.includes("already registered") ||
+        lower.includes("email-already-exists") ||
+        lower.includes("already exists");
+
+      if (alreadyRegistered) {
+        toast({
+          title: "Account already exists",
+          description: "Please sign in with your email.",
+        });
+        navigate("/login");
+        return;
+      }
+
       toast({
         title: "Registration failed",
-        description: error?.message || "Please try again.",
+        description: message,
         variant: "destructive",
       });
     } finally {

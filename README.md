@@ -79,6 +79,7 @@ Auto Garage is a web-based garage booking and workshop management platform.
 - `QUICK_START.md`
 - `PRISMA_SETUP.md`
 - `BOOKING_SYSTEM.md`
+- `docs/FIREBASE_IMPORT.md`
 - `docs/AUTH.md`
 - `docs/SUPABASE_FULL_SINGLE_SETUP.sql`
 - `docs/SUPABASE_DEMO_SEED.sql`
@@ -90,6 +91,8 @@ Auto Garage is a web-based garage booking and workshop management platform.
 - `npm run test`
 - `npm run lint`
 - `npm run build`
+- `npm run import:firestore`
+- `npm run import:firestore:dry`
 
 ## Notes
 - Run Supabase setup SQL first, then demo seed SQL.

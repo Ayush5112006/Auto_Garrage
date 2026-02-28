@@ -1,8 +1,15 @@
 import { Router } from "express";
-import { supabaseAdmin } from "../lib/supabase";
+import { adminDb } from "../lib/firebase-admin";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
+
+const profilesCol = () => adminDb.collection("profiles");
+const garagesCol = () => adminDb.collection("garages");
+const staffCol = () => adminDb.collection("staff");
+const tasksCol = () => adminDb.collection("tasks");
+const timeLogsCol = () => adminDb.collection("time_logs");
+const inventoryCol = () => adminDb.collection("inventory");
 
 const isManagerOrAdmin = (role?: string) => {
     const normalized = String(role || "").toLowerCase();
@@ -13,12 +20,10 @@ const isAdmin = (role?: string) => String(role || "").toLowerCase() === "admin";
 
 const getStaffRecordByUserId = async (userId?: string) => {
     if (!userId) return null;
-    const { data } = await supabaseAdmin
-        .from("staff")
-        .select("id, garage_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-    return data || null;
+    const snap = await staffCol().where("userId", "==", userId).limit(1).get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    return { id: doc.id, garageId: doc.data().garageId, ...doc.data() };
 };
 
 // Add staff to garage
@@ -26,41 +31,26 @@ router.post("/garage-staff", authenticate, async (req: AuthRequest, res) => {
     try {
         const { userId, garageId } = req.body;
 
-        // Check if auth user is garage owner or admin
-        const { data: garage } = await supabaseAdmin
-            .from("garages")
-            .select("owner_id")
-            .eq("id", garageId)
-            .maybeSingle();
-
-        if (!garage) return res.status(404).json({ error: "Garage not found" });
-        if (garage.owner_id !== req.userId && req.userRole !== "admin") {
+        const garageSnap = await garagesCol().doc(garageId).get();
+        if (!garageSnap.exists) return res.status(404).json({ error: "Garage not found" });
+        const garageData = garageSnap.data()!;
+        if (garageData.ownerId !== req.userId && req.userRole !== "admin") {
             return res.status(403).json({ error: "Unauthorized" });
         }
 
-        const { data, error } = await supabaseAdmin
-            .from("staff")
-            .insert({ user_id: userId, garage_id: garageId })
-            .select()
-            .single();
+        const docRef = await staffCol().add({
+            userId,
+            garageId,
+            createdAt: new Date().toISOString(),
+        });
 
-        if (error) throw error;
-
-        // Also update the user's role to 'staff' if it was 'customer'
-        const { data: userProfile } = await supabaseAdmin
-            .from("profiles")
-            .select("role")
-            .eq("id", userId)
-            .maybeSingle();
-
-        if (userProfile?.role === "customer") {
-            await supabaseAdmin
-                .from("profiles")
-                .update({ role: "staff" })
-                .eq("id", userId);
+        // Update user role to staff if customer
+        const profileSnap = await profilesCol().doc(userId).get();
+        if (profileSnap.exists && profileSnap.data()?.role === "customer") {
+            await profilesCol().doc(userId).update({ role: "staff" });
         }
 
-        res.status(201).json(data);
+        res.status(201).json({ id: docRef.id, userId, garageId });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to add staff" });
     }
@@ -76,39 +66,30 @@ router.delete("/garage-staff/:userId", authenticate, async (req: AuthRequest, re
             return res.status(400).json({ error: "userId and garageId are required" });
         }
 
-        const { data: garage } = await supabaseAdmin
-            .from("garages")
-            .select("owner_id")
-            .eq("id", garageId)
-            .maybeSingle();
-
-        if (!garage) return res.status(404).json({ error: "Garage not found" });
-        if (garage.owner_id !== req.userId && !isAdmin(req.userRole)) {
+        const garageSnap = await garagesCol().doc(garageId).get();
+        if (!garageSnap.exists) return res.status(404).json({ error: "Garage not found" });
+        const garageData = garageSnap.data()!;
+        if (garageData.ownerId !== req.userId && !isAdmin(req.userRole)) {
             return res.status(403).json({ error: "Unauthorized" });
         }
 
-        const { error } = await supabaseAdmin
-            .from("staff")
-            .delete()
-            .eq("user_id", userId)
-            .eq("garage_id", garageId);
+        // Delete staff doc
+        const staffSnap = await staffCol()
+            .where("userId", "==", userId)
+            .where("garageId", "==", garageId)
+            .get();
 
-        if (error) throw error;
+        const batch = adminDb.batch();
+        staffSnap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
 
-        const { count: remainingStaffCount } = await supabaseAdmin
-            .from("staff")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", userId);
+        // Check remaining staff records
+        const remaining = await staffCol().where("userId", "==", userId).get();
 
-        if ((remainingStaffCount || 0) === 0) {
-            const { data: profile } = await supabaseAdmin
-                .from("profiles")
-                .select("role")
-                .eq("id", userId)
-                .maybeSingle();
-
-            if (profile?.role === "staff") {
-                await supabaseAdmin.from("profiles").update({ role: "customer" }).eq("id", userId);
+        if (remaining.empty) {
+            const profileSnap = await profilesCol().doc(userId).get();
+            if (profileSnap.exists && profileSnap.data()?.role === "staff") {
+                await profilesCol().doc(userId).update({ role: "customer" });
             }
         }
 
@@ -123,16 +104,19 @@ router.get("/garage-staff/:garageId", authenticate, async (req: AuthRequest, res
     try {
         const { garageId } = req.params;
 
-        const { data, error } = await supabaseAdmin
-            .from("staff")
-            .select(`
-        *,
-        user:profiles!user_id (id, name, email, role)
-      `)
-            .eq("garage_id", garageId);
+        const snap = await staffCol().where("garageId", "==", garageId).get();
+        const staffList = await Promise.all(
+            snap.docs.map(async (d) => {
+                const data = d.data();
+                const profileSnap = await profilesCol().doc(data.userId).get();
+                const user = profileSnap.exists
+                    ? { id: profileSnap.id, ...profileSnap.data() }
+                    : null;
+                return { id: d.id, ...data, user };
+            })
+        );
 
-        if (error) throw error;
-        res.json(data);
+        res.json(staffList);
     } catch (error: any) {
         res.status(500).json({ error: "Failed to fetch staff" });
     }
@@ -147,59 +131,56 @@ router.get("/profile/:userId", authenticate, async (req: AuthRequest, res) => {
             return res.status(403).json({ error: "Unauthorized" });
         }
 
-        const { data, error } = await supabaseAdmin
-            .from("profiles")
-            .select("id, name, full_name, phone, role")
-            .eq("id", userId)
-            .maybeSingle();
+        const profileSnap = await profilesCol().doc(userId).get();
+        if (!profileSnap.exists) return res.json({ id: userId });
 
-        if (error) throw error;
-        res.json(data || { id: userId });
+        const data = profileSnap.data()!;
+        res.json({
+            id: profileSnap.id,
+            name: data.name,
+            full_name: data.full_name,
+            phone: data.phone,
+            role: data.role,
+        });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to fetch profile" });
     }
 });
 
-// Get time logs for current staff user
+// Get time logs
 router.get("/time-logs", authenticate, async (req: AuthRequest, res) => {
     try {
         const staffRecord = await getStaffRecordByUserId(req.userId);
 
-        let query = supabaseAdmin
-            .from("time_logs")
-            .select("*")
-            .order("work_date", { ascending: false });
+        let q: FirebaseFirestore.Query = timeLogsCol().orderBy("workDate", "desc");
 
         if (staffRecord && String(req.userRole || "").toLowerCase() === "staff") {
-            query = query.eq("staff_id", staffRecord.id);
+            q = q.where("staffId", "==", staffRecord.id);
         }
 
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
+        const snap = await q.get();
+        const logs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        res.json(logs);
     } catch (error: any) {
         res.status(500).json({ error: "Failed to fetch time logs" });
     }
 });
 
-// Get inventory for current staff/manager scope
+// Get inventory
 router.get("/inventory", authenticate, async (req: AuthRequest, res) => {
     try {
         const role = String(req.userRole || "").toLowerCase();
-        let query = supabaseAdmin
-            .from("inventory")
-            .select("*")
-            .order("created_at", { ascending: false });
+        let q: FirebaseFirestore.Query = inventoryCol().orderBy("createdAt", "desc");
 
         if (role === "staff") {
             const staffRecord = await getStaffRecordByUserId(req.userId);
             if (!staffRecord) return res.json([]);
-            query = query.eq("garage_id", staffRecord.garage_id);
+            q = q.where("garageId", "==", staffRecord.garageId);
         }
 
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
+        const snap = await q.get();
+        const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        res.json(items);
     } catch (error: any) {
         res.status(500).json({ error: "Failed to fetch inventory" });
     }
@@ -214,61 +195,41 @@ router.post("/work-orders", authenticate, async (req: AuthRequest, res) => {
 
         const { booking_id, staff_id, description } = req.body;
 
-        const { data, error } = await supabaseAdmin
-            .from("tasks")
-            .insert({
-                booking_id,
-                staff_id,
-                description,
-                task_status: "pending"
-            })
-            .select()
-            .single();
+        const payload = {
+            bookingId: booking_id,
+            staffId: staff_id,
+            description,
+            taskStatus: "pending",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
 
-        if (error) throw error;
-        res.status(201).json(data);
+        const docRef = await tasksCol().add(payload);
+        res.status(201).json({ id: docRef.id, ...payload });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to create work order" });
     }
 });
 
-// Get all tasks (for staff dashboard)
+// Get all tasks
 router.get("/work-orders", authenticate, async (req: AuthRequest, res) => {
     try {
         const includeAll = String(req.query.all || "") === "1";
 
-        // If user is staff, get their tasks
-        // If admin, get all
-        const query = supabaseAdmin
-            .from("tasks")
-            .select(`
-        *,
-        booking:bookings (
-          *,
-          customer:profiles!customer_id (id, name, email),
-          service:services (id, service_name)
-        )
-      `)
-            .order("created_at", { ascending: false });
+        let q: FirebaseFirestore.Query = tasksCol().orderBy("createdAt", "desc");
 
         if (String(req.userRole || "").toLowerCase() === "staff" || !includeAll) {
-            // Find staff_id for this user
-            const { data: staffData } = await supabaseAdmin
-                .from("staff")
-                .select("id")
-                .eq("user_id", req.userId)
-                .maybeSingle();
-
-            if (staffData) {
-                query.eq("staff_id", staffData.id);
+            const staffRecord = await getStaffRecordByUserId(req.userId);
+            if (staffRecord) {
+                q = q.where("staffId", "==", staffRecord.id);
             } else {
                 return res.json([]);
             }
         }
 
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data);
+        const snap = await q.get();
+        const tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        res.json(tasks);
     } catch (error: any) {
         res.status(500).json({ error: "Failed to fetch work orders" });
     }
@@ -280,37 +241,29 @@ router.patch("/work-orders/:id", authenticate, async (req: AuthRequest, res) => 
         const { id } = req.params;
         const { task_status } = req.body;
 
-        const { data: existingTask } = await supabaseAdmin
-            .from("tasks")
-            .select("id, staff_id")
-            .eq("id", id)
-            .maybeSingle();
+        const taskSnap = await tasksCol().doc(id).get();
+        if (!taskSnap.exists) return res.status(404).json({ error: "Work order not found" });
 
-        if (!existingTask) {
-            return res.status(404).json({ error: "Work order not found" });
-        }
-
+        const taskData = taskSnap.data()!;
         const role = String(req.userRole || "").toLowerCase();
         let canUpdate = role === "admin" || role === "manager";
 
         if (!canUpdate && role === "staff") {
             const staffRecord = await getStaffRecordByUserId(req.userId);
-            canUpdate = Boolean(staffRecord && staffRecord.id === existingTask.staff_id);
+            canUpdate = Boolean(staffRecord && staffRecord.id === taskData.staffId);
         }
 
         if (!canUpdate) {
             return res.status(403).json({ error: "Unauthorized" });
         }
 
-        const { data, error } = await supabaseAdmin
-            .from("tasks")
-            .update({ task_status })
-            .eq("id", id)
-            .select()
-            .single();
+        await tasksCol().doc(id).update({
+            taskStatus: task_status,
+            updatedAt: new Date().toISOString(),
+        });
 
-        if (error) throw error;
-        res.json(data);
+        const updatedSnap = await tasksCol().doc(id).get();
+        res.json({ id: updatedSnap.id, ...updatedSnap.data() });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to update task" });
     }

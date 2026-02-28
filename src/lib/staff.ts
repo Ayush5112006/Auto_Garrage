@@ -1,5 +1,7 @@
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
+import { getProfile } from "@/lib/firebase-db";
 
 export type StaffProfile = {
   id: string;
@@ -115,6 +117,13 @@ const normalizeWorkOrders = (data: any[]): WorkOrder[] =>
 const isDemoUserId = (userId?: string | null) =>
   String(userId || "").trim().toLowerCase().startsWith("demo-");
 
+const isDemoWorkOrderId = (id?: string | null) =>
+  /^wo-/i.test(String(id || "").trim());
+
+const hasBackendTokenCookie = () =>
+  typeof document !== "undefined" &&
+  document.cookie.split(";").some((part) => part.trim().startsWith("token="));
+
 export async function getStaffProfile(userId: string) {
   if (isDemoUserId(userId)) {
     return { id: userId, role: "staff", name: "Demo Staff", full_name: "Demo Staff" } as StaffProfile;
@@ -125,15 +134,19 @@ export async function getStaffProfile(userId: string) {
     return data;
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, role, name, full_name, phone")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profile) {
-    return profile as StaffProfile;
-  }
+  // Firestore fallback
+  try {
+    const profile = await getProfile(userId);
+    if (profile) {
+      return {
+        id: userId,
+        role: profile.role || "staff",
+        name: profile.name || profile.full_name || "Staff User",
+        full_name: profile.full_name || profile.name || "Staff User",
+        phone: (profile as any).phone || null,
+      } as StaffProfile;
+    }
+  } catch {}
 
   return { id: userId, role: "staff", name: "Staff User", full_name: "Staff User" } as StaffProfile;
 }
@@ -148,16 +161,16 @@ export async function getWorkOrdersForStaff(userId: string) {
     return normalizeWorkOrders(data as any[]);
   }
 
-  const { data: serviceTasks, error: taskError } = await supabase
-    .from("service_tasks")
-    .select("*")
-    .eq("assigned_to", userId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (!taskError && Array.isArray(serviceTasks) && serviceTasks.length > 0) {
-    return normalizeWorkOrders(serviceTasks as any[]);
-  }
+  // Firestore fallback
+  try {
+    const tasksRef = collection(db, "tasks");
+    const q = query(tasksRef, where("staffId", "==", userId), orderBy("createdAt", "desc"), limit(50));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return normalizeWorkOrders(tasks);
+    }
+  } catch {}
 
   return demoWorkOrders;
 }
@@ -177,15 +190,23 @@ export async function getInventoryItems(userId?: string) {
     })) as InventoryItem[];
   }
 
-  const { data: stock, error: stockError } = await supabase
-    .from("inventory")
-    .select("id, part_name, quantity, min_stock")
-    .order("part_name", { ascending: true })
-    .limit(100);
-
-  if (!stockError && Array.isArray(stock) && stock.length > 0) {
-    return stock as InventoryItem[];
-  }
+  // Firestore fallback
+  try {
+    const invRef = collection(db, "inventory");
+    const q = query(invRef, orderBy("partName", "asc"), limit(100));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => {
+        const item = d.data();
+        return {
+          id: d.id,
+          part_name: item.partName || item.part_name || "",
+          quantity: Number(item.quantity || 0),
+          min_stock: Number(item.minStock || item.min_stock || 0),
+        };
+      }) as InventoryItem[];
+    }
+  } catch {}
 
   return demoInventory;
 }
@@ -206,20 +227,33 @@ export async function getTimeLogsForStaff(userId: string) {
     })) as TimeLog[];
   }
 
-  const { data: logs, error: logsError } = await supabase
-    .from("staff_time_logs")
-    .select("id, work_date, clock_in, clock_out, hours")
-    .order("work_date", { ascending: false })
-    .limit(30);
-
-  if (!logsError && Array.isArray(logs) && logs.length > 0) {
-    return logs as TimeLog[];
-  }
+  // Firestore fallback
+  try {
+    const logsRef = collection(db, "time_logs");
+    const q = query(logsRef, where("userId", "==", userId), orderBy("workDate", "desc"), limit(30));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => {
+        const log = d.data();
+        return {
+          id: d.id,
+          work_date: log.workDate || log.work_date || "-",
+          clock_in: log.clockIn || log.clock_in || null,
+          clock_out: log.clockOut || log.clock_out || null,
+          hours: typeof log.hours === "number" ? log.hours : Number(log.hours || 0),
+        };
+      }) as TimeLog[];
+    }
+  } catch {}
 
   return demoTimeLogs;
 }
 
 export async function updateWorkOrderStatus(id: string, status: string) {
+  if (isDemoWorkOrderId(id) || !hasBackendTokenCookie()) {
+    return { id, task_status: status };
+  }
+
   const { data, error } = await api.request<any>(`/staff/work-orders/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ task_status: status }),
@@ -228,16 +262,12 @@ export async function updateWorkOrderStatus(id: string, status: string) {
     return data;
   }
 
-  const { data: updated, error: supabaseError } = await supabase
-    .from("service_tasks")
-    .update({ task_status: status, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .maybeSingle();
-
-  if (supabaseError) {
+  // Firestore fallback
+  try {
+    const taskRef = doc(db, "tasks", id);
+    await updateDoc(taskRef, { taskStatus: status, updatedAt: serverTimestamp() });
+    return { id, task_status: status };
+  } catch {
     return { id, task_status: status };
   }
-
-  return updated || { id, task_status: status };
 }

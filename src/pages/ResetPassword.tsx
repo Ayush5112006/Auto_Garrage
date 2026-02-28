@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, Lock, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabaseClient";
+import { auth } from "@/lib/firebase";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -21,14 +21,7 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setSessionReady(!!session?.user);
-    };
-
-    init();
+    setSessionReady(!!auth.currentUser);
   }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {

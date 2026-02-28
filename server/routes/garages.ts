@@ -1,48 +1,73 @@
 import { Router } from "express";
-import { supabaseAdmin } from "../lib/supabase";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { adminDb } from "../lib/firebase-admin";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
+// Configure multer for garage logo uploads
+const uploadsDir = path.join(process.cwd(), "public", "uploads", "garages");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname);
+    cb(null, `${uniqueSuffix}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype);
+    cb(null, extOk && mimeOk);
+  },
+});
+
+const garagesCol = () => adminDb.collection("garages");
+const profilesCol = () => adminDb.collection("profiles");
+
 // Get all garages
 router.get("/", async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("garages")
-      .select(`
-        *,
-        owner:profiles!owner_id (id, name, email)
-      `)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    res.json(data);
+    const snap = await garagesCol().orderBy("createdAt", "desc").get();
+    const garages = await Promise.all(
+      snap.docs.map(async (d) => {
+        const data = d.data();
+        let owner = null;
+        if (data.ownerId) {
+          const ownerSnap = await profilesCol().doc(data.ownerId).get();
+          if (ownerSnap.exists) {
+            const o = ownerSnap.data()!;
+            owner = { id: ownerSnap.id, name: o.name, email: o.email };
+          }
+        }
+        return { id: d.id, ...data, owner };
+      })
+    );
+    res.json(garages);
   } catch (error: any) {
-    res.status(500).json({ error: "Failed to fetch garages" });
+    console.error("GET /garages error:", error?.message || error);
+    res.status(500).json({ error: error?.message || "Failed to fetch garages" });
   }
 });
 
 // Get my garage (for managers)
 router.get("/my-garage", authenticate, async (req: AuthRequest, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("garages")
-      .select(`
-        *,
-        staff:staff (
-          id,
-          user:profiles!user_id (id, name, email, role)
-        ),
-        bookings:bookings (
-          *,
-          customer:profiles!customer_id (id, name, email)
-        )
-      `)
-      .eq("owner_id", req.userId)
-      .maybeSingle();
-
-    if (error) throw error;
-    res.json(data);
+    const snap = await garagesCol().where("ownerId", "==", req.userId).limit(1).get();
+    if (snap.empty) return res.json(null);
+    const doc = snap.docs[0];
+    res.json({ id: doc.id, ...doc.data() });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to fetch your garage" });
   }
@@ -52,81 +77,84 @@ router.get("/my-garage", authenticate, async (req: AuthRequest, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { data, error } = await supabaseAdmin
-      .from("garages")
-      .select(`
-        *,
-        owner:profiles!owner_id (id, name, email)
-      `)
-      .eq("id", id)
-      .maybeSingle();
+    const doc = await garagesCol().doc(id).get();
+    if (!doc.exists) return res.status(404).json({ error: "Garage not found" });
 
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Garage not found" });
-    res.json(data);
+    const data = doc.data()!;
+    let owner = null;
+    if (data.ownerId) {
+      const ownerSnap = await profilesCol().doc(data.ownerId).get();
+      if (ownerSnap.exists) {
+        const o = ownerSnap.data()!;
+        owner = { id: ownerSnap.id, name: o.name, email: o.email };
+      }
+    }
+    res.json({ id: doc.id, ...data, owner });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to fetch garage" });
   }
 });
 
 // Create garage
-router.post("/", authenticate, async (req: AuthRequest, res) => {
+router.post("/", authenticate, upload.single("logo"), async (req: AuthRequest, res) => {
   try {
     const { garage_name, location, contact_phone, open_time, description } = req.body;
 
-    const { data, error } = await supabaseAdmin
-      .from("garages")
-      .insert({
-        garage_name,
-        location,
-        contact_phone,
-        open_time,
-        description,
-        owner_id: req.userId
-      })
-      .select()
-      .single();
+    const payload: Record<string, unknown> = {
+      name: garage_name,
+      location,
+      contactPhone: contact_phone,
+      openTime: open_time,
+      description,
+      ownerId: req.userId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (error) throw error;
-    res.status(201).json(data);
+    // If a logo file was uploaded, store its URL
+    if (req.file) {
+      payload.logoUrl = `/uploads/garages/${req.file.filename}`;
+    }
+
+    const docRef = await garagesCol().add(payload);
+    res.status(201).json({ id: docRef.id, ...payload });
   } catch (error: any) {
-    res.status(500).json({ error: "Failed to create garage" });
+    console.error("POST /garages error:", error);
+    res.status(500).json({ error: error?.message || error?.toString() || "Failed to create garage" });
   }
 });
 
 // Update garage
-router.put("/:id", authenticate, async (req: AuthRequest, res) => {
+router.put("/:id", authenticate, upload.single("logo"), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { garage_name, location, contact_phone, open_time, description } = req.body;
 
-    // Check ownership or admin
-    const { data: garage } = await supabaseAdmin
-      .from("garages")
-      .select("owner_id")
-      .eq("id", id)
-      .maybeSingle();
+    const garageSnap = await garagesCol().doc(id).get();
+    if (!garageSnap.exists) return res.status(404).json({ error: "Garage not found" });
 
-    if (!garage) return res.status(404).json({ error: "Garage not found" });
-    if (garage.owner_id !== req.userId && req.userRole !== "admin") {
+    const garageData = garageSnap.data()!;
+    if (garageData.ownerId !== req.userId && req.userRole !== "admin") {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const { data: updated, error } = await supabaseAdmin
-      .from("garages")
-      .update({
-        garage_name,
-        location,
-        contact_phone,
-        open_time,
-        description
-      })
-      .eq("id", id)
-      .select()
-      .single();
+    const updates: Record<string, unknown> = {
+      name: garage_name,
+      location,
+      contactPhone: contact_phone,
+      openTime: open_time,
+      description,
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (error) throw error;
-    res.json(updated);
+    // If a new logo was uploaded, update it
+    if (req.file) {
+      updates.logoUrl = `/uploads/garages/${req.file.filename}`;
+    }
+
+    await garagesCol().doc(id).update(updates);
+    const updatedSnap = await garagesCol().doc(id).get();
+    res.json({ id: updatedSnap.id, ...updatedSnap.data() });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to update garage" });
   }
@@ -137,24 +165,15 @@ router.delete("/:id", authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
 
-    // Check ownership or admin
-    const { data: garage } = await supabaseAdmin
-      .from("garages")
-      .select("owner_id")
-      .eq("id", id)
-      .maybeSingle();
+    const garageSnap = await garagesCol().doc(id).get();
+    if (!garageSnap.exists) return res.status(404).json({ error: "Garage not found" });
 
-    if (!garage) return res.status(404).json({ error: "Garage not found" });
-    if (garage.owner_id !== req.userId && req.userRole !== "admin") {
+    const garageData = garageSnap.data()!;
+    if (garageData.ownerId !== req.userId && req.userRole !== "admin") {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const { error } = await supabaseAdmin
-      .from("garages")
-      .delete()
-      .eq("id", id);
-
-    if (error) throw error;
+    await garagesCol().doc(id).delete();
     res.json({ message: "Garage deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to delete garage" });

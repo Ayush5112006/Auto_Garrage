@@ -8,12 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/useAuth";
+import { uploadStaffImage, addGarageStaffDoc } from "@/lib/firebase-db";
 
 const LOCAL_STAFF_KEY = "garage_staff_local";
 const STAFF_SIGNUP_COOLDOWN_KEY = "staff_signup_cooldown_until";
-const GARAGE_STAFF_TABLE_MISSING_UNTIL_KEY = "garage_staff_table_missing_until";
 
 const parseNumber = (value: string) => {
   const parsed = Number(value);
@@ -83,21 +82,12 @@ export default function AddStaff() {
 
   const uploadProfilePicture = async () => {
     if (!profilePic || !user?.id) return "";
-
-    const safeName = profilePic.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `staff/${user.id}/${Date.now()}-${safeName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("garage-images")
-      .upload(filePath, profilePic, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (uploadError) return "";
-
-    const { data } = supabase.storage.from("garage-images").getPublicUrl(filePath);
-    return data?.publicUrl || "";
+    try {
+      const url = await uploadStaffImage(profilePic, `staff/${user.id}`);
+      return url || "";
+    } catch {
+      return "";
+    }
   };
 
   const saveLocalFallback = (payload: Record<string, unknown>) => {
@@ -142,7 +132,7 @@ export default function AddStaff() {
           if (rateLimited) {
             const cooldownMs = 10 * 60 * 1000;
             localStorage.setItem(STAFF_SIGNUP_COOLDOWN_KEY, String(Date.now() + cooldownMs));
-            authNotice = "Supabase signup rate limit reached. Staff details were saved; login account can be created later.";
+            authNotice = "Signup rate limit reached. Staff details were saved; login account can be created later.";
           } else if (!alreadyRegistered) {
             throw new Error(registerResult.error);
           }
@@ -151,50 +141,38 @@ export default function AddStaff() {
 
       const profilePicUrl = await uploadProfilePicture();
 
-      const payload = {
-        owner_id: user.id,
-        name,
-        email_id: email,
-        services,
-        experience_years: parseNumber(form.experience),
-        year_of_join: parseNumber(form.yearOfJoin),
-        salary: parseNumber(form.salary),
-        profile_pic_url: profilePicUrl || null,
-        default_password: generatedPassword,
-        created_at: new Date().toISOString(),
-      };
-
-      const tableMissingUntil = Number(localStorage.getItem(GARAGE_STAFF_TABLE_MISSING_UNTIL_KEY) || "0");
-      const tableMissing = tableMissingUntil > Date.now();
-
-      let insertError: { message?: string } | null = null;
-      if (!tableMissing) {
-        const insertResult = await supabase.from("garage_staff").insert(payload);
-        insertError = insertResult.error;
-      } else {
-        insertError = { message: "garage_staff table not available" };
-      }
-
-      if (insertError) {
-        const errorText = String(insertError.message || "").toLowerCase();
-        if (errorText.includes("404") || errorText.includes("not found") || errorText.includes("garage_staff")) {
-          const tableRetryMs = 10 * 60 * 1000;
-          localStorage.setItem(
-            GARAGE_STAFF_TABLE_MISSING_UNTIL_KEY,
-            String(Date.now() + tableRetryMs)
-          );
-        }
-
-        saveLocalFallback(payload);
-        toast({
-          title: "Staff added with local fallback",
-          description: "Staff details were saved locally because garage_staff table is unavailable.",
+      try {
+        await addGarageStaffDoc({
+          ownerId: user.id,
+          name,
+          emailId: email,
+          services,
+          experienceYears: parseNumber(form.experience),
+          yearOfJoin: parseNumber(form.yearOfJoin),
+          salary: parseNumber(form.salary),
+          profilePicUrl: profilePicUrl || null,
+          defaultPassword: generatedPassword,
         });
-      } else {
-        localStorage.removeItem(GARAGE_STAFF_TABLE_MISSING_UNTIL_KEY);
         toast({
           title: "Staff added successfully",
           description: authNotice || `Default password: ${generatedPassword}`,
+        });
+      } catch {
+        saveLocalFallback({
+          owner_id: user.id,
+          name,
+          email_id: email,
+          services,
+          experience_years: parseNumber(form.experience),
+          year_of_join: parseNumber(form.yearOfJoin),
+          salary: parseNumber(form.salary),
+          profile_pic_url: profilePicUrl || null,
+          default_password: generatedPassword,
+          created_at: new Date().toISOString(),
+        });
+        toast({
+          title: "Staff added with local fallback",
+          description: "Staff details were saved locally.",
         });
       }
 

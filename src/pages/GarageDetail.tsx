@@ -26,7 +26,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabaseClient";
 
 type Garage = {
   id: string;
@@ -74,7 +73,7 @@ type Booking = {
   createdAt: string;
 };
 
-const fallbackImage = "/placeholder.svg";
+const fallbackImage = "/mercedes.png";
 const apiOrigin = (() => {
   try {
     return new URL(import.meta.env.VITE_API_URL || `${window.location.origin}/api`).origin;
@@ -201,8 +200,15 @@ const GarageDetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [adminApiAllowed, setAdminApiAllowed] = useState(true);
 
   const [editForm, setEditForm] = useState<Partial<Garage>>({});
+  const userRole = String(user?.role || "").toLowerCase();
+  const isDemoUser = String(user?.id || "").startsWith("demo-") || String(user?.email || "").endsWith(".local");
+  const hasBackendToken =
+    typeof document !== "undefined" &&
+    document.cookie.split(";").some((part) => part.trim().startsWith("token="));
+  const canViewOperationalData = userRole === "admin" && !isDemoUser && hasBackendToken && adminApiAllowed;
 
   const loadGarageData = async () => {
     if (!id) {
@@ -212,36 +218,58 @@ const GarageDetail = () => {
 
     setLoading(true);
 
-    const [garageDbResult, analyticsResult, bookingsResult] = await Promise.all([
-      supabase.from("garages").select("*").eq("id", id).maybeSingle(),
-      api.getGarageAnalytics(id),
-      api.getGarageBookings(id),
-    ]);
+    const garageResult = await api.getGarage(id);
 
-    if (garageDbResult.error) {
-      setLoadError(garageDbResult.error.message || "Failed to load garage");
+    if (garageResult.error) {
+      setLoadError(garageResult.error || "Failed to load garage");
       setGarage(null);
-    } else if (!garageDbResult.data) {
+    } else if (!garageResult.data) {
       setLoadError("Garage not found in database");
       setGarage(null);
     } else {
-      const normalized = normalizeGarage(garageDbResult.data as Record<string, any>);
+      const normalized = normalizeGarage(garageResult.data as Record<string, any>);
       setGarage(normalized);
       setEditForm(normalized);
       setLoadError(null);
     }
 
-    if (!analyticsResult.error && analyticsResult.data) {
-      setAnalytics(analyticsResult.data as Analytics);
-    }
+    if (canViewOperationalData) {
+      const [analyticsResult, bookingsResult] = await Promise.all([
+        api.getGarageAnalytics(id),
+        api.getGarageBookings(id),
+      ]);
 
-    if (!bookingsResult.error && Array.isArray(bookingsResult.data)) {
-      const normalized = bookingsResult.data.map((row) => normalizeBooking(row as Record<string, any>));
-      setBookings(normalized);
+      if (analyticsResult.status === 403 || bookingsResult.status === 403) {
+        setAdminApiAllowed(false);
+        setAnalytics(null);
+        setBookings([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!analyticsResult.error && analyticsResult.data) {
+        setAnalytics(analyticsResult.data as Analytics);
+      } else {
+        setAnalytics(null);
+      }
+
+      if (!bookingsResult.error && Array.isArray(bookingsResult.data)) {
+        const normalized = bookingsResult.data.map((row) => normalizeBooking(row as Record<string, any>));
+        setBookings(normalized);
+      } else {
+        setBookings([]);
+      }
+    } else {
+      setAnalytics(null);
+      setBookings([]);
     }
 
     setLoading(false);
   };
+
+  useEffect(() => {
+    setAdminApiAllowed(true);
+  }, [user?.id, user?.role, user?.email]);
 
   useEffect(() => {
     let mounted = true;
@@ -256,7 +284,7 @@ const GarageDetail = () => {
     return () => {
       mounted = false;
     };
-  }, [id]);
+  }, [id, canViewOperationalData]);
 
   const locationText = useMemo(() => {
     if (!garage) return "";
@@ -408,15 +436,17 @@ const GarageDetail = () => {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col items-end justify-between p-8">
               <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowAnalytics(!showAnalytics)}
-                  variant="secondary"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Analytics
-                </Button>
+                {canViewOperationalData && (
+                  <Button
+                    onClick={() => setShowAnalytics(!showAnalytics)}
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </Button>
+                )}
               </div>
               <div className="text-white">
                 {isEditing ? (
@@ -466,14 +496,14 @@ const GarageDetail = () => {
                         <p className="text-xs text-muted-foreground mb-1">Total Revenue</p>
                         <div className="flex items-center gap-2">
                           <DollarSign className="h-4 w-4 text-primary" />
-                          <p className="text-xl font-bold">₹{analytics.totalRevenue.toLocaleString()}</p>
+                          <p className="text-xl font-bold">Rs {analytics.totalRevenue.toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="p-3 rounded-lg bg-white/50 dark:bg-slate-900">
                         <p className="text-xs text-muted-foreground mb-1">Avg Order Value</p>
                         <div className="flex items-center gap-2">
                           <TrendingUp className="h-4 w-4 text-primary" />
-                          <p className="text-xl font-bold">₹{Math.round(analytics.averageOrderValue).toLocaleString()}</p>
+                          <p className="text-xl font-bold">Rs {Math.round(analytics.averageOrderValue).toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="p-3 rounded-lg bg-white/50 dark:bg-slate-900">
@@ -612,45 +642,47 @@ const GarageDetail = () => {
               </Card>
 
               {/* Recent Bookings */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Bookings</CardTitle>
-                  <CardDescription>Latest service bookings for this garage</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {bookings.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No bookings yet.</p>
-                  ) : (
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {bookings.slice(0, 10).map((booking) => (
-                        <div key={booking.trackingId} className="border rounded-lg p-3 text-sm">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="font-medium">{booking.trackingId}</p>
-                            <Badge
-                              variant={
-                                booking.status === "completed"
-                                  ? "default"
-                                  : booking.status === "pending"
-                                    ? "outline"
-                                    : "secondary"
-                              }
-                            >
-                              {booking.status}
-                            </Badge>
+              {canViewOperationalData && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Bookings</CardTitle>
+                    <CardDescription>Latest service bookings for this garage</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {bookings.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No bookings yet.</p>
+                    ) : (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {bookings.slice(0, 10).map((booking) => (
+                          <div key={booking.trackingId} className="border rounded-lg p-3 text-sm">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="font-medium">{booking.trackingId}</p>
+                              <Badge
+                                variant={
+                                  booking.status === "completed"
+                                    ? "default"
+                                    : booking.status === "pending"
+                                      ? "outline"
+                                      : "secondary"
+                                }
+                              >
+                                {booking.status}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-1">
+                              {booking.name} - {booking.vehicle}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {booking.date} {booking.time}
+                            </p>
+                            <p className="text-sm font-medium mt-1">Rs {booking.total.toLocaleString()}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mb-1">
-                            {booking.name} • {booking.vehicle}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {booking.date} {booking.time}
-                          </p>
-                          <p className="text-sm font-medium mt-1">₹{booking.total.toLocaleString()}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -832,3 +864,4 @@ const GarageDetail = () => {
 };
 
 export default GarageDetail;
+

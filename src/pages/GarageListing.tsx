@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Phone, Clock, ArrowRight, Search } from "lucide-react";
 import { GlitchText } from "@/components/ui/glitch-text";
-import { supabase } from "@/lib/supabaseClient";
+import { api } from "@/lib/api-client";
 
 interface Garage {
   id: string;
@@ -45,7 +45,7 @@ const normalizeGarage = (raw: Record<string, unknown>): Garage => ({
   reviews: raw.reviews != null ? Number(raw.reviews) : null,
 });
 
-const fallbackImage = "/placeholder.svg";
+const fallbackImage = "/mercedes.png";
 const apiOrigin = (() => {
   try {
     return new URL(import.meta.env.VITE_API_URL || `${window.location.origin}/api`).origin;
@@ -139,15 +139,12 @@ const GarageListing = () => {
 
     const loadGarages = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("garages")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await api.getGarages();
 
       if (!isMounted) return;
 
       if (error) {
-        setLoadError(error.message || "Failed to load garages");
+        setLoadError(error || "Failed to load garages");
         setGarages([]);
       } else {
         setLoadError(null);

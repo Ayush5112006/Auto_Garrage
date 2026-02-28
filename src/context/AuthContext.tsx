@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabaseClient";
+import { auth } from "@/lib/firebase";
+import { getProfile } from "@/lib/firebase-db";
 import { AuthContext, User, UserRole } from "@/context/useAuth";
 
 const USER_ROLE: UserRole = "customer";
@@ -16,9 +18,6 @@ const normalizeRole = (value?: string | null): UserRole => {
   if (normalized === "customer" || normalized === "user") return "customer";
   return USER_ROLE;
 };
-
-const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const hasCookie = (name: string) => {
   if (typeof document === "undefined") return false;
@@ -45,41 +44,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const toUserFromSession = async (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
-    const fallbackName =
-      String(sessionUser.user_metadata?.name || sessionUser.user_metadata?.full_name || "").trim() || "User";
-
-    return hydrateRoleFromSupabase({
-      id: sessionUser.id,
-      email: sessionUser.email || "",
-      name: fallbackName,
-      role: USER_ROLE,
-    });
+  const toUserFromFirebase = async (uid: string, email: string | null, displayName: string | null) => {
+    let profile: { role?: string; name?: string; full_name?: string } | null = null;
+    try {
+      profile = await getProfile(uid);
+    } catch (err) {
+      console.warn("Could not fetch Firestore profile (permissions?), falling back to display name.", err);
+    }
+    const name = profile?.full_name || profile?.name || displayName || "User";
+    const role = normalizeRole(profile?.role);
+    return { id: uid, email: email || "", name, role };
   };
 
-  const hydrateRoleFromSupabase = async (nextUser: User): Promise<User> => {
+  const hydrateRoleFromProfile = async (nextUser: User): Promise<User> => {
     if (!nextUser?.id) {
       return nextUser;
     }
-
     const fallbackRole: UserRole = normalizeRole(nextUser.role);
-
-    if (!isUuid(nextUser.id)) {
-      return { ...nextUser, role: fallbackRole };
+    let profile: { role?: string; name?: string; full_name?: string } | null = null;
+    try {
+      profile = await getProfile(nextUser.id);
+    } catch (err) {
+      console.warn("Could not hydrate profile from Firestore.", err);
     }
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", nextUser.id)
-      .maybeSingle();
-
-    if (error || !data?.role) {
-      return { ...nextUser, role: fallbackRole };
-    }
-
-    const normalizedRole = normalizeRole(String(data.role));
-    return { ...nextUser, role: normalizedRole };
+    const role = profile?.role ? normalizeRole(profile.role) : fallbackRole;
+    return { ...nextUser, role };
   };
 
   useEffect(() => {
@@ -94,86 +83,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
     const safetyTimeout = window.setTimeout(() => {
-      if (mounted) {
-        setLoading(false);
-      }
+      if (mounted) setLoading(false);
     }, 10000);
 
-    const loadUser = async () => {
-      try {
-        const { data, error } = await api.getCurrentUser();
-        const payload = data as { user?: User } | undefined;
-        if (!mounted) return;
-
-        if (!error && payload?.user) {
-          const hydratedUser = withKnownRole(payload.user) || (await hydrateRoleFromSupabase(payload.user));
-          if (!mounted) return;
-          setUser(hydratedUser);
-          setLoading(false);
-          return;
-        }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        if (session?.user) {
-          const hydratedUser = await toUserFromSession(session.user as any);
-          if (!mounted) return;
-          setUser(hydratedUser);
-        } else {
-          setUser(null);
-        }
-
-        setLoading(false);
-      } catch {
-        if (!mounted) return;
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!mounted) return;
+      if (firebaseUser) {
+        const nextUser = await toUserFromFirebase(
+          firebaseUser.uid,
+          firebaseUser.email || null,
+          firebaseUser.displayName || null
+        );
+        if (mounted) setUser(nextUser);
+      } else {
         setUser(null);
-        setLoading(false);
       }
-    };
-
-    loadUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (session?.user) {
-          const nextUser = await toUserFromSession(session.user as any);
-          if (!mounted) return;
-          setUser(nextUser);
-          setLoading(false);
-          return;
-        }
-
-        const { data: apiData, error: apiError } = await api.getCurrentUser();
-        const apiPayload = apiData as { user?: User } | undefined;
-
-        if (!mounted) return;
-
-        if (!apiError && apiPayload?.user) {
-          const nextUser = withKnownRole(apiPayload.user) || (await hydrateRoleFromSupabase(apiPayload.user));
-          if (!mounted) return;
-          setUser(nextUser);
-        } else {
-          setUser(null);
-        }
-
-        setLoading(false);
-      } catch {
-        if (!mounted) return;
-        setUser(null);
-        setLoading(false);
-      }
+      setLoading(false);
     });
 
     return () => {
       mounted = false;
       window.clearTimeout(safetyTimeout);
-      subscription.unsubscribe();
+      unsub();
     };
   }, []);
 
@@ -194,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const hydrated = withKnownRole(payload.user) || (await hydrateRoleFromSupabase(payload.user));
+      const hydrated = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
       setUser(hydrated);
     } catch {
       setUser(null);
@@ -210,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let nextUser: User = null;
     if (payload?.user) {
-      nextUser = withKnownRole(payload.user) || (await hydrateRoleFromSupabase(payload.user));
+      nextUser = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
       setUser(nextUser);
     }
 
@@ -233,7 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(error);
     }
     if (payload?.user) {
-      const nextUser = withKnownRole(payload.user) || (await hydrateRoleFromSupabase(payload.user));
+      const nextUser = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
       setUser(nextUser);
       navigate('/');
     }

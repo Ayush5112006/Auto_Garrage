@@ -2,17 +2,18 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
+import path from "path";
+
+// Load env BEFORE importing modules that depend on env vars
+dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+dotenv.config();
+
 import authRoutes from "./routes/auth";
 import garagesRoutes from "./routes/garages";
 import bookingsRoutes from "./routes/bookings";
 import staffRoutes from "./routes/staff";
-import path from "path";
 import { getPrismaHealth } from "./lib/prisma";
-import { isSupabaseConfigured } from "./lib/supabase";
-
-// Load .env.local first, then .env
-dotenv.config({ path: path.join(process.cwd(), ".env.local") });
-dotenv.config();
+import { isFirebaseConfigured } from "./lib/firebase-admin";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,15 +30,15 @@ app.use(cookieParser());
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
-// Guard backend routes if Supabase env is not configured
+// Guard backend routes if Firebase is not configured
 app.use("/api", (req, res, next) => {
   if (req.path === "/health") {
     return next();
   }
 
-  if (!isSupabaseConfigured) {
+  if (!isFirebaseConfigured) {
     return res.status(503).json({
-      error: "Server Supabase config missing. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY).",
+      error: "Server Firebase config missing. Set FIREBASE_PROJECT_ID and service account credentials.",
     });
   }
 
@@ -55,7 +56,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     message: "API server is running",
-    supabase: isSupabaseConfigured ? "configured" : "missing-env",
+    firebase: isFirebaseConfigured ? "configured" : "missing-env",
     timestamp: new Date().toISOString(),
   });
 });

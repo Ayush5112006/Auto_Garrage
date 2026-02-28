@@ -1,6 +1,6 @@
 import { Router, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { supabaseAdmin } from "../lib/supabase";
+import { adminAuth, adminDb } from "../lib/firebase-admin";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
@@ -26,56 +26,49 @@ const buildAuthCookieOptions = (rememberMe: boolean) => ({
   maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
 });
 
-// Login
+const profilesCol = () => adminDb.collection("profiles");
+
+// Login – accepts either { idToken } (verified on server) or { email } (lookup by email)
 router.post("/login", async (req, res) => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password, rememberMe, idToken } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    if (!email && !idToken) {
+      return res.status(400).json({ error: "Email/password or idToken required" });
     }
 
-    // Authenticate with Supabase
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let uid: string;
+    let userEmail: string;
 
-    if (authError || !authData.user) {
-      return res.status(401).json({ error: authError?.message || "Invalid credentials" });
+    if (idToken) {
+      const decoded = await adminAuth.verifyIdToken(idToken);
+      uid = decoded.uid;
+      userEmail = decoded.email || email || "";
+    } else {
+      try {
+        const userRecord = await adminAuth.getUserByEmail(email);
+        uid = userRecord.uid;
+        userEmail = userRecord.email || email;
+      } catch {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
     }
 
-    // Get profile
-    const { data: profileData } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", authData.user.id)
-      .maybeSingle();
+    const profileSnap = await profilesCol().doc(uid).get();
+    const profileData = profileSnap.exists ? profileSnap.data() : null;
 
-    const role = normalizeRole(profileData?.role, isAdminEmail(email) ? "admin" : "customer");
-    const name = profileData?.name || authData.user.user_metadata?.name || "User";
+    const role = normalizeRole(profileData?.role, isAdminEmail(userEmail) ? "admin" : "customer");
+    const name = profileData?.name || profileData?.full_name || "User";
 
     const token = jwt.sign(
-      {
-        userId: authData.user.id,
-        email: authData.user.email,
-        name,
-        role,
-      },
+      { userId: uid, email: userEmail, name, role },
       JWT_SECRET,
       { expiresIn: rememberMe ? "30d" : "1d" }
     );
 
     res.cookie("token", token, buildAuthCookieOptions(Boolean(rememberMe)));
 
-    res.json({
-      user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        name,
-        role,
-      },
-    });
+    res.json({ user: { id: uid, email: userEmail, name, role } });
   } catch (error: any) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -92,41 +85,35 @@ router.post("/register", async (req, res) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedName = String(name || "").trim();
+    const normalizedName = String(name || "").trim() || "User";
     const role = isAdminEmail(normalizedEmail) ? "admin" : "customer";
 
-    const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          name: normalizedName,
-          role: role,
-        },
-      },
-    });
-
-    if (signUpError || !signUpData.user) {
-      return res.status(400).json({ error: signUpError?.message || "Registration failed" });
+    let userRecord;
+    try {
+      userRecord = await adminAuth.createUser({
+        email: normalizedEmail,
+        password,
+        displayName: normalizedName,
+      });
+    } catch (err: any) {
+      const code = err?.code || "";
+      if (code === "auth/email-already-exists") {
+        return res.status(400).json({ error: "User already registered" });
+      }
+      return res.status(400).json({ error: err?.message || "Registration failed" });
     }
 
-    // Profile is created via trigger 'on_auth_user_created' in SQL
-    // But we'll do an upsert just in case the trigger isn't set up yet
-    const profileName = normalizedName || "User";
-    await supabaseAdmin.from("profiles").upsert({
-      id: signUpData.user.id,
+    await profilesCol().doc(userRecord.uid).set({
       email: normalizedEmail,
-      name: profileName,
-      role: role,
+      name: normalizedName,
+      full_name: normalizedName,
+      role,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     const token = jwt.sign(
-      {
-        userId: signUpData.user.id,
-        email: normalizedEmail,
-        name: profileName,
-        role,
-      },
+      { userId: userRecord.uid, email: normalizedEmail, name: normalizedName, role },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -134,12 +121,7 @@ router.post("/register", async (req, res) => {
     res.cookie("token", token, buildAuthCookieOptions(true));
 
     res.json({
-      user: {
-        id: signUpData.user.id,
-        email: normalizedEmail,
-        name: profileName,
-        role,
-      },
+      user: { id: userRecord.uid, email: normalizedEmail, name: normalizedName, role },
     });
   } catch (error: any) {
     console.error("Registration error:", error);
@@ -152,21 +134,15 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
   try {
     if (!req.userId) return res.json({ user: null });
 
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", req.userId)
-      .maybeSingle();
+    const profileSnap = await profilesCol().doc(req.userId).get();
+    if (!profileSnap.exists) return res.json({ user: null });
 
-    if (!profile) {
-      return res.json({ user: null });
-    }
-
+    const profile = profileSnap.data()!;
     res.json({
       user: {
-        id: profile.id,
+        id: profileSnap.id,
         email: profile.email,
-        name: profile.name,
+        name: profile.name || profile.full_name,
         role: profile.role,
       },
     });
@@ -195,16 +171,9 @@ router.post("/logout", (req, res) => {
 router.patch("/update-profile", authenticate, async (req: AuthRequest, res) => {
   try {
     const { name } = req.body;
-
-    const { data, error } = await supabaseAdmin
-      .from("profiles")
-      .update({ name })
-      .eq("id", req.userId)
-      .select()
-      .maybeSingle();
-
-    if (error) return res.status(400).json({ error: error.message });
-    res.json(data);
+    await profilesCol().doc(req.userId!).update({ name, updatedAt: new Date().toISOString() });
+    const snap = await profilesCol().doc(req.userId!).get();
+    res.json({ id: snap.id, ...snap.data() });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to update profile" });
   }
@@ -214,13 +183,13 @@ router.patch("/update-profile", authenticate, async (req: AuthRequest, res) => {
 router.get("/users", authenticate, async (req: AuthRequest, res) => {
   if (req.userRole !== "admin") return res.status(403).json({ error: "Unauthorized" });
 
-  const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  try {
+    const snap = await profilesCol().orderBy("createdAt", "desc").get();
+    const users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    res.json(users);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Admin: Update user role
@@ -230,15 +199,13 @@ router.patch("/users/:id/role", authenticate, async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { role } = req.body;
 
-  const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .update({ role })
-    .eq("id", id)
-    .select()
-    .maybeSingle();
-
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  try {
+    await profilesCol().doc(id).update({ role, updatedAt: new Date().toISOString() });
+    const snap = await profilesCol().doc(id).get();
+    res.json({ id: snap.id, ...snap.data() });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 export default router;

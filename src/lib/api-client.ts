@@ -1,9 +1,34 @@
-import { supabase } from "@/lib/supabaseClient";
 import { getDefaultUserForCredentials } from "@/lib/defaultCredentials";
+import { auth } from "@/lib/firebase";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  updatePassword,
+} from "firebase/auth";
+import {
+  getProfile,
+  createProfile,
+  getGaragesList,
+  getGarageById,
+  getGarageByOwnerId,
+  createGarage as createGarageFirestore,
+  updateGarage as updateGarageFirestore,
+  deleteGarageFirestore,
+  toFirestoreGarage,
+  uploadGarageImage,
+} from "@/lib/firebase-db";
 
 const resolveApiUrl = () => {
   const configured = (import.meta.env.VITE_API_URL || "").trim();
   if (!configured) {
+    if (typeof window !== "undefined") {
+      const isFrontendLocal = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+      if (isFrontendLocal) {
+        return "/api";
+      }
+    }
     return "";
   }
 
@@ -22,7 +47,7 @@ const resolveApiUrl = () => {
 };
 
 const API_URL = resolveApiUrl();
-const SIGNUP_COOLDOWN_KEY = "supabase_signup_cooldown_until";
+const SIGNUP_COOLDOWN_KEY = "firebase_signup_cooldown_until";
 
 const normalizeRole = (value?: string | null) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -117,11 +142,7 @@ class ApiClient {
     );
   }
 
-  private shouldUseSupabaseFallback(result: ApiResponse<any>) {
-    if (!result.error) return false;
-    if (result.status === 502 || result.status === 503) return true;
-    return this.isNetworkFailure(result.error);
-  }
+
 
   private async uploadRequest<T>(
     endpoint: string,
@@ -157,23 +178,13 @@ class ApiClient {
     }
   }
 
-  private async uploadGarageLogoToSupabase(logoFile: File, userId: string): Promise<string | null> {
-    const safeName = logoFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `${userId}/${Date.now()}-${safeName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("garage-images")
-      .upload(filePath, logoFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (uploadError) {
+  private async uploadGarageLogo(logoFile: File, userId: string): Promise<string | null> {
+    try {
+      return await uploadGarageImage(logoFile, userId);
+    } catch (err) {
+      console.warn("Direct Firebase Storage upload failed (CORS?), skipping logo upload.", err);
       return null;
     }
-
-    const { data } = supabase.storage.from("garage-images").getPublicUrl(filePath);
-    return data?.publicUrl || null;
   }
 
   // Auth endpoints
@@ -190,284 +201,148 @@ class ApiClient {
       };
     }
 
-    const { data: previousSessionData } = await supabase.auth.getSession();
-    const previousSession = previousSessionData.session;
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name,
-        },
-      },
-    });
-
-    if (signUpError || !signUpData.user) {
-      const errorMessage = (signUpError?.message || "").toLowerCase();
-      const statusCode = String((signUpError as { status?: number } | null)?.status || "");
-      const isRateLimited =
-        errorMessage.includes("rate limit") ||
-        errorMessage.includes("too many requests") ||
-        statusCode === "429";
-
-      if (isRateLimited && typeof window !== "undefined") {
-        const cooldownMs = 10 * 60 * 1000;
-        localStorage.setItem(SIGNUP_COOLDOWN_KEY, String(Date.now() + cooldownMs));
-      }
-
-      if (
-        isRateLimited ||
-        errorMessage.includes("user already registered") ||
-        errorMessage.includes("invalid") ||
-        errorMessage.includes("password")
-      ) {
-        return { error: signUpError?.message || "Registration failed" };
-      }
-
-      if (!shouldAutoLogin) {
-        return { error: signUpError?.message || "Registration failed" };
-      }
-
+    // Try backend API first if available
+    if (this.hasBackendApi && this.backendApiAvailable) {
       const apiResult = await this.request<{ user?: any }>("/auth/register", {
         method: "POST",
         body: JSON.stringify({ name, email, password }),
       });
+      if (!apiResult.error) return apiResult;
 
-      return apiResult.error
-        ? { error: signUpError?.message || apiResult.error || "Registration failed" }
-        : apiResult;
-    }
+      const status = Number(apiResult.status || 0);
+      const message = String(apiResult.error || "").toLowerCase();
+      const isClientValidationError = status >= 400 && status < 500;
+      const isKnownRegistrationValidation =
+        message.includes("already") ||
+        message.includes("exists") ||
+        message.includes("registered") ||
+        message.includes("invalid") ||
+        message.includes("password") ||
+        message.includes("email") ||
+        message.includes("rate limit") ||
+        message.includes("too many requests");
 
-    const fallbackName = (name || signUpData.user.user_metadata?.name || "User").trim() || "User";
-    const fallbackRole = "customer";
-
-    await supabase.from("profiles").upsert(
-      {
-        id: signUpData.user.id,
-        role: fallbackRole,
-        name: fallbackName,
-        full_name: fallbackName,
-      },
-      { onConflict: "id" }
-    );
-
-    if (!shouldAutoLogin) {
-      if (previousSession?.access_token && previousSession?.refresh_token) {
-        await supabase.auth.setSession({
-          access_token: previousSession.access_token,
-          refresh_token: previousSession.refresh_token,
-        });
-      } else {
-        await supabase.auth.signOut();
+      // Do not double-attempt Firebase Auth for expected backend validation failures.
+      if (isClientValidationError || isKnownRegistrationValidation) {
+        return apiResult;
       }
-    } else if (!signUpData.session) {
-      await supabase.auth.signInWithPassword({ email, password });
     }
 
-    return {
-      data: {
-        user: {
-          id: signUpData.user.id,
-          email: signUpData.user.email || email,
-          name: fallbackName,
-          role: fallbackRole,
+    // Firebase Auth fallback (direct client-side)
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const fallbackName = (name || "").trim() || "User";
+      await createProfile(userCred.user.uid, { role: "customer", name: fallbackName, full_name: fallbackName });
+      return {
+        data: {
+          user: {
+            id: userCred.user.uid,
+            email: userCred.user.email || email,
+            name: fallbackName,
+            role: "customer",
+          },
         },
-      },
-    };
+      };
+    } catch (err: any) {
+      const msg = err?.message || "Registration failed";
+      if (/rate limit|too many requests/i.test(msg) && typeof window !== "undefined") {
+        localStorage.setItem(SIGNUP_COOLDOWN_KEY, String(Date.now() + 10 * 60 * 1000));
+      }
+      return { error: msg };
+    }
   }
 
   async login(email: string, password: string, rememberMe = true) {
     const defaultUser = getDefaultUserForCredentials(email, password);
     if (defaultUser) {
-      return {
-        data: {
-          user: defaultUser,
-        },
-      };
+      return { data: { user: defaultUser } };
     }
 
-    if (!this.hasBackendApi) {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError || !authData.user) {
-        return { error: authError?.message || "Invalid email or password" };
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, name, full_name")
-        .eq("id", authData.user.id)
-        .maybeSingle();
-
+    // Firebase Auth: sign in client-side, then optionally notify backend
+    try {
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const profile = await getProfile(userCred.user.uid);
       const role = normalizeRole(profile?.role);
       const name =
-        (profile?.full_name as string | undefined) ||
-        (profile?.name as string | undefined) ||
-        (authData.user.user_metadata?.name as string | undefined) ||
-        "User";
+        profile?.full_name || profile?.name || (userCred.user.displayName as string) || "User";
+
+      // If backend is available, also create a JWT session cookie
+      if (this.hasBackendApi && this.backendApiAvailable) {
+        const idToken = await userCred.user.getIdToken();
+        await this.request("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, idToken, rememberMe }),
+        }).catch(() => { /* non-critical */ });
+      }
 
       return {
         data: {
           user: {
-            id: authData.user.id,
-            email: authData.user.email || email,
+            id: userCred.user.uid,
+            email: userCred.user.email || email,
             name,
             role,
           },
         },
       };
+    } catch (err: any) {
+      return { error: err?.message || "Invalid email or password" };
     }
-
-    const apiResult = await this.request<{ user?: any }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password, rememberMe }),
-    });
-
-    if (!apiResult.error) {
-      return apiResult;
-    }
-
-    const shouldTryDirectSupabase =
-      this.isNetworkFailure(apiResult.error) || apiResult.status === 503;
-
-    if (!shouldTryDirectSupabase) {
-      return apiResult;
-    }
-
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError || !authData.user) {
-      return { error: apiResult.error || authError?.message || "Invalid email or password" };
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, name, full_name")
-      .eq("id", authData.user.id)
-      .maybeSingle();
-
-    const role = normalizeRole(profile?.role);
-    const name =
-      (profile?.full_name as string | undefined) ||
-      (profile?.name as string | undefined) ||
-      (authData.user.user_metadata?.name as string | undefined) ||
-      "User";
-
-    return {
-      data: {
-        user: {
-          id: authData.user.id,
-          email: authData.user.email || email,
-          name,
-          role,
-        },
-      },
-    };
   }
 
   async logout() {
-    if (!this.hasBackendApi) {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        return { error: error.message || "Logout failed" };
-      }
-      return { data: { message: "Logged out successfully" } };
-    }
+    try {
+      await signOut(auth);
+    } catch { /* ignore */ }
 
-    const apiResult = await this.request("/auth/logout", { method: "POST" });
-
-    if (!apiResult.error || !this.isNetworkFailure(apiResult.error)) {
-      return apiResult;
-    }
-
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      return { error: error.message || apiResult.error || "Logout failed" };
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      await this.request("/auth/logout", { method: "POST" }).catch(() => {});
     }
 
     return { data: { message: "Logged out successfully" } };
   }
 
   async forgotPassword(email: string) {
-    const redirectTo =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/reset-password`
-        : undefined;
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo,
-    });
-
-    if (error) {
-      return { error: error.message || "Failed to send reset email" };
+    try {
+      const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
+      await sendPasswordResetEmail(auth, email, { url: redirectTo });
+      return { data: { success: true } };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to send reset email" };
     }
-
-    return { data: { success: true } };
   }
 
   async resetPassword(newPassword: string) {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      return { error: error.message || "Failed to reset password" };
+    const user = auth.currentUser;
+    if (!user) {
+      return { error: "Not signed in. Sign in again and try resetting password." };
     }
-
-    return { data: { success: true } };
+    try {
+      await updatePassword(user, newPassword);
+      return { data: { success: true } };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to reset password" };
+    }
   }
 
   async getCurrentUser() {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (!sessionError) {
-      if (!session?.user) {
-        return { data: { user: null } };
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, name, full_name")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      const role = normalizeRole(profile?.role);
-      const name =
-        (profile?.full_name as string | undefined) ||
-        (profile?.name as string | undefined) ||
-        (session.user.user_metadata?.name as string | undefined) ||
-        "User";
-
-      return {
-        data: {
-          user: {
-            id: session.user.id,
-            email: session.user.email || "",
-            name,
-            role,
-          },
-        },
-      };
-    }
-
-    const apiResult = await this.request<{ user?: any }>("/auth/me");
-
-    if (!apiResult.error || !this.isNetworkFailure(apiResult.error)) {
-      return apiResult;
-    }
-
-    if (!session?.user) {
+    const user = auth.currentUser;
+    if (!user) {
       return { data: { user: null } };
     }
-
-    return { data: { user: null } };
+    const profile = await getProfile(user.uid);
+    const role = normalizeRole(profile?.role);
+    const name = profile?.full_name || profile?.name || (user.displayName as string) || "User";
+    return {
+      data: {
+        user: {
+          id: user.uid,
+          email: user.email || "",
+          name,
+          role,
+        },
+      },
+    };
   }
 
   async updateProfileApi(data: { name?: string; phone?: string }) {
@@ -479,84 +354,54 @@ class ApiClient {
 
   // Garage endpoints
   async getGarages() {
-    const apiResult = await this.request<any[]>("/garages");
-    if (!apiResult.error && Array.isArray(apiResult.data)) {
-      return { data: apiResult.data };
+    // Try backend API first
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.request<any[]>("/garages");
+      if (!apiResult.error && Array.isArray(apiResult.data)) {
+        return { data: apiResult.data };
+      }
     }
 
-    if (!this.shouldUseSupabaseFallback(apiResult)) {
-      return apiResult;
+    // Firestore fallback
+    try {
+      const list = await getGaragesList();
+      return { data: list };
+    } catch {
+      return { data: [] };
     }
-
-    const { data: supabaseData, error: supabaseError } = await supabase
-      .from("garages")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (!supabaseError && Array.isArray(supabaseData)) {
-      return { data: supabaseData };
-    }
-
-    return apiResult.error ? apiResult : { data: [] };
   }
 
   async getGarage(id: string) {
-    const apiResult = await this.request<any>(`/garages/${id}`);
-    if (!apiResult.error && apiResult.data) {
-      return apiResult;
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.request<any>(`/garages/${id}`);
+      if (!apiResult.error && apiResult.data) {
+        return apiResult;
+      }
     }
 
-    if (!this.shouldUseSupabaseFallback(apiResult)) {
-      return apiResult;
+    try {
+      const garage = await getGarageById(id);
+      return garage ? { data: garage } : { error: "Garage not found" };
+    } catch {
+      return { error: "Failed to load garage" };
     }
-
-    const { data: supabaseData, error: supabaseError } = await supabase
-      .from("garages")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (!supabaseError && supabaseData) {
-      return { data: supabaseData };
-    }
-
-    return apiResult;
   }
 
   async getMyGarageApi() {
-    const loadFromSupabase = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const user = auth.currentUser;
+    if (!user) return { data: null };
 
-      if (!session?.user?.id) {
-        return { data: null };
-      }
-
-      const { data, error } = await supabase
-        .from("garages")
-        .select("*")
-        .eq("owner_id", session.user.id)
-        .maybeSingle();
-
-      if (error) {
-        return { error: error.message || "Failed to load garage" };
-      }
-
-      return { data };
-    };
-
-    const supabaseResult = await loadFromSupabase();
-    if (!supabaseResult.error) {
-      return supabaseResult;
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.request<any>("/garages/my-garage");
+      if (!apiResult.error) return apiResult;
     }
 
-    if (!this.hasBackendApi || !this.backendApiAvailable) {
-      return supabaseResult;
+    try {
+      const garage = await getGarageByOwnerId(user.uid);
+      return { data: garage };
+    } catch {
+      return { data: null };
     }
-
-    const apiResult = await this.request<any>("/garages/my-garage");
-    return apiResult.error ? supabaseResult : apiResult;
   }
 
   async addGarageStaffApi(userId: string, garageId: string) {
@@ -585,14 +430,22 @@ class ApiClient {
       formData.append("logo", logoFile);
     }
 
-    // Add all other fields to formData
-    Object.entries(garageData).forEach(([key, value]: [string, any]) => {
-      if (value !== null && value !== undefined && key !== "logoFile") {
-        if (Array.isArray(value)) {
-          formData.append(key, JSON.stringify(value));
-        } else {
-          formData.append(key, value.toString());
-        }
+    // Map camelCase to snake_case for backend
+
+    // Only send the backend-expected fields, mapped from camelCase
+    const backendFields: Record<string, string> = {
+      name: "garage_name",
+      contactPhone: "contact_phone",
+      openTime: "open_time",
+      description: "description",
+      location: "location",
+      ownerId: "ownerId"
+    };
+
+    Object.entries(backendFields).forEach(([frontendKey, backendKey]) => {
+      const value = garageData[frontendKey];
+      if (value !== null && value !== undefined) {
+        formData.append(backendKey, value.toString());
       }
     });
 
@@ -603,72 +456,26 @@ class ApiClient {
     garageData: Record<string, unknown>,
     logoFile?: File
   ): Promise<ApiResponse<any>> {
-    const apiResult = await this.createGarage(garageData, logoFile);
-    if (!apiResult.error) {
-      return apiResult;
+    // Try backend API first
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.createGarage(garageData, logoFile);
+      if (!apiResult.error) return apiResult;
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user?.id) {
-      return apiResult;
-    }
-
-    const columnMap: Record<string, string> = {
-      ownerId: "owner_id",
-      name: "garage_name",
-      garage_name: "garage_name",
-      operatorEmail: "email_id",
-      operatorPassword: "password",
-      logoUrl: "logo_url",
-      openTime: "open_time",
-      contactPhone: "contact_phone",
-      addressCountry: "address_country",
-      addressState: "location",
-      location: "location",
-      addressStreet: "address_street",
-      services: "services",
-      mechanicsCount: "mechanics_count",
-      serviceImageUrl: "service_image_url",
-      mapUrl: "map_url",
-      carRepairTypes: "car_repair_types",
-      sinceYear: "since_year",
-      sellsSecondHand: "sells_second_hand",
-      problemsSolvedCount: "problems_solved_count",
-      paymentMethods: "payment_methods",
-      description: "description",
-    };
-
-    const insertPayload = Object.entries(garageData).reduce<Record<string, unknown>>((acc, [key, value]) => {
-      const mappedKey = columnMap[key];
-      if (mappedKey !== undefined && value !== undefined) {
-        acc[mappedKey] = value;
+    // Firestore fallback
+    const user = auth.currentUser;
+    if (!user) return { error: "Not signed in" };
+    try {
+      const payload = toFirestoreGarage({ ...garageData, ownerId: user.uid });
+      if (logoFile) {
+        const logoUrl = await this.uploadGarageLogo(logoFile, user.uid);
+        if (logoUrl) payload.logoUrl = logoUrl;
       }
-      return acc;
-    }, {});
-
-    insertPayload.owner_id = session.user.id;
-
-    if (logoFile) {
-      const logoPublicUrl = await this.uploadGarageLogoToSupabase(logoFile, session.user.id);
-      if (logoPublicUrl) {
-        insertPayload.logo_url = logoPublicUrl;
-      }
+      const { id } = await createGarageFirestore(payload);
+      return { data: { id, ...payload } };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to create garage" };
     }
-
-    const { data, error } = await supabase
-      .from("garages")
-      .insert(insertPayload)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      return { error: apiResult.error || error.message || "Failed to create garage" };
-    }
-
-    return { data };
   }
 
   async updateGarage(id: string, garageData: any, logoFile?: File) {
@@ -723,70 +530,36 @@ class ApiClient {
   }
 
   async updateGarageWithFallback(id: string, garageData: Record<string, unknown>) {
-    const apiResult = await this.updateGarage(id, garageData);
-    if (!apiResult.error) {
-      return apiResult;
+    // Try backend API first
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.updateGarage(id, garageData);
+      if (!apiResult.error) return apiResult;
     }
 
-    const columnMap: Record<string, string> = {
-      name: "garage_name",
-      garage_name: "garage_name",
-      operatorEmail: "email_id",
-      operatorPassword: "password",
-      openTime: "open_time",
-      contactPhone: "contact_phone",
-      addressCountry: "address_country",
-      addressState: "location",
-      location: "location",
-      addressStreet: "address_street",
-      mechanicsCount: "mechanics_count",
-      serviceImageUrl: "service_image_url",
-      mapUrl: "map_url",
-      sinceYear: "since_year",
-      sellsSecondHand: "sells_second_hand",
-      problemsSolvedCount: "problems_solved_count",
-      description: "description",
-    };
-
-    const updatePayload = Object.entries(garageData).reduce<Record<string, unknown>>((acc, [key, value]) => {
-      const mappedKey = columnMap[key];
-      if (mappedKey !== undefined) {
-        acc[mappedKey] = value;
-      }
-      return acc;
-    }, {});
-
-    if (Object.keys(updatePayload).length === 0) {
-      return { error: apiResult.error || "No updatable fields provided" };
+    // Firestore fallback
+    try {
+      const payload = toFirestoreGarage(garageData);
+      await updateGarageFirestore(id, payload);
+      return { data: { id, ...payload } };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to update garage" };
     }
-
-    const { data, error } = await supabase
-      .from("garages")
-      .update(updatePayload)
-      .eq("id", id)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      return { error: apiResult.error || error.message || "Failed to update garage" };
-    }
-
-    return { data };
   }
 
   async deleteGarageWithFallback(id: string) {
-    const apiResult = await this.deleteGarage(id);
-    if (!apiResult.error) {
-      return apiResult;
+    // Try backend API first
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.deleteGarage(id);
+      if (!apiResult.error) return apiResult;
     }
 
-    const { error } = await supabase.from("garages").delete().eq("id", id);
-
-    if (error) {
-      return { error: apiResult.error || error.message || "Failed to delete garage" };
+    // Firestore fallback
+    try {
+      await deleteGarageFirestore(id);
+      return { data: { id } };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to delete garage" };
     }
-
-    return { data: { id } };
   }
 
   async getGarageBookings(garageId?: string) {

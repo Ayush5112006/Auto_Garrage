@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/useAuth";
-import { supabase } from "@/lib/supabaseClient";
+import { getProfile } from "@/lib/firebase-db";
 import { getRoleDefaultCredentials } from "@/lib/defaultCredentials";
 
 const adminDefaults = getRoleDefaultCredentials("admin");
@@ -46,14 +46,9 @@ export default function AdminLogin() {
       let isAdmin = String(nextUser.role || "").toLowerCase() === "admin";
 
       if (!isAdmin) {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", nextUser.id)
-          .maybeSingle();
-
-        if (!profileError) {
-          isAdmin = String(profile?.role || "").toLowerCase() === "admin";
+        const profile = await getProfile(nextUser.id);
+        if (profile) {
+          isAdmin = String(profile.role || "").toLowerCase() === "admin";
         }
       }
 
