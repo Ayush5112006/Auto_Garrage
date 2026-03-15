@@ -1,15 +1,18 @@
 import { useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Phone, Lock, User } from "lucide-react";
+import { useAuth } from "@/context/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Register() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const { register } = useAuth();
+  const { toast } = useToast();
 
   const [form, setForm] = useState({
     name: "",
@@ -27,19 +30,34 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await axios.post(
-        "http://localhost/backend/register.php",
-        form
-      );
+      await register(form.name, form.email, form.password);
+      toast({
+        title: "Account created!",
+        description: "Your account is ready. Redirecting to dashboard...",
+      });
+      navigate("/dashboard");
+    } catch (error: any) {
+      const message = String(error?.message || "Please try again.");
+      const lower = message.toLowerCase();
+      const alreadyRegistered =
+        lower.includes("already registered") ||
+        lower.includes("email-already-exists") ||
+        lower.includes("already exists");
 
-      alert(res.data.message); // Ideally replace with toast
-
-      if (res.data.status === true) {
+      if (alreadyRegistered) {
+        toast({
+          title: "Account already exists",
+          description: "Please sign in with your email.",
+        });
         navigate("/login");
+        return;
       }
-    } catch (error) {
-      console.error(error);
-      alert("Registration failed");
+
+      toast({
+        title: "Registration failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -47,7 +65,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen pt-32 pb-24 flex items-center justify-center">
-      <div className="container max-w-md mx-auto px-4">
+      <div className="page-shell max-w-md">
         <Card className="border-2">
           <CardHeader className="text-center space-y-2">
             <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
@@ -136,13 +154,13 @@ export default function Register() {
             </form>
 
             <div className="mt-6 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
+              Already registered?{" "}
               <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={() => navigate("/dashboard")}
                 className="text-primary hover:underline font-semibold"
               >
-                Sign In
+                Go to Dashboard
               </button>
             </div>
           </CardContent>

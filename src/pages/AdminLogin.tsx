@@ -1,55 +1,74 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/context/useAuth";
+import { getProfile } from "@/lib/firebase-db";
+import { getRoleDefaultCredentials } from "@/lib/defaultCredentials";
 
-export default function Login() {
+const adminDefaults = getRoleDefaultCredentials("admin");
+
+export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { login, logout, user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (user?.role === "admin") {
+      navigate("/admin", { replace: true });
+    }
+  }, [authLoading, navigate, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAuthError(null);
 
     try {
-      const res = await axios.post("http://localhost/php-api/login.php", {
-        email,
-        password,
-      });
+      const nextUser = await login(email, password, undefined, rememberMe);
 
-      if (res.data.status === true) {
-        localStorage.setItem("authToken", res.data.token || "");
-        localStorage.setItem("user", JSON.stringify(res.data.user));
-
-        toast({
-          title: "Login Successful!",
-          description: "Welcome back! Redirecting to dashboard...",
-        });
-
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 1000);
-      } else {
-        toast({
-          title: "Login Failed",
-          description: res.data.message || "Invalid credentials",
-          variant: "destructive",
-        });
+      if (!nextUser?.id) {
+        throw new Error("Unable to create session. Please try again.");
       }
-    } catch (error: any) {
+
+      let isAdmin = String(nextUser.role || "").toLowerCase() === "admin";
+
+      if (!isAdmin) {
+        const profile = await getProfile(nextUser.id);
+        if (profile) {
+          isAdmin = String(profile.role || "").toLowerCase() === "admin";
+        }
+      }
+
+      if (!isAdmin) {
+        await logout();
+        throw new Error("Access denied. Admin role required.");
+      }
+
+      navigate("/admin", { replace: true });
+
       toast({
-        title: "Error",
-        description: error.response?.data?.message || "Something went wrong",
+        title: "Admin login successful",
+        description: "Redirecting to admin dashboard...",
+      });
+    } catch (error: any) {
+      const message = error?.message || "Invalid credentials";
+      setAuthError(message);
+      toast({
+        title: "Login failed",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -57,24 +76,41 @@ export default function Login() {
     }
   };
 
+  const handleUseDefaultCredentials = () => {
+    setEmail(adminDefaults.email);
+    setPassword(adminDefaults.password);
+    setAuthError(null);
+  };
+
   return (
     <div className="min-h-screen">
-
       <main className="pt-32 pb-24 bg-gradient-to-b from-background to-muted/30">
-        <div className="container mx-auto px-4">
+        <div className="page-shell">
           <div className="max-w-md mx-auto">
             <Card className="border-2">
               <CardHeader className="text-center space-y-2">
                 <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
-                  <LogIn className="w-8 h-8 text-primary" />
+                  <ShieldCheck className="w-8 h-8 text-primary" />
                 </div>
-                <CardTitle className="text-3xl">Welcome Back</CardTitle>
-                <CardDescription>Sign in to your account to access your bookings</CardDescription>
+                <CardTitle className="text-3xl">Admin Login</CardTitle>
+                <CardDescription>Sign in to access the admin dashboard</CardDescription>
               </CardHeader>
 
               <CardContent>
+                <div className="mb-4 rounded-md border bg-muted/40 p-3 text-sm">
+                  <p className="font-medium">Default Admin ID</p>
+                  <p className="text-muted-foreground">{adminDefaults.email}</p>
+                  <p className="mt-1 text-muted-foreground">Password: {adminDefaults.password}</p>
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={handleUseDefaultCredentials}>
+                    Use default credentials
+                  </Button>
+                </div>
+                {authError ? (
+                  <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                    {authError}
+                  </div>
+                ) : null}
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Email */}
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-base">Email Address</Label>
                     <div className="relative">
@@ -82,7 +118,7 @@ export default function Login() {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="your@email.com"
+                        placeholder="admin@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -91,7 +127,6 @@ export default function Login() {
                     </div>
                   </div>
 
-                  {/* Password */}
                   <div className="space-y-2">
                     <Label htmlFor="password" className="text-base">Password</Label>
                     <div className="relative">
@@ -110,57 +145,38 @@ export default function Login() {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
-                        {showPassword ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Submit Button */}
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    Keep me signed in
+                  </label>
+
                   <Button
                     type="submit"
                     className="w-full mt-6"
                     size="lg"
                     disabled={loading}
                   >
-                    {loading ? "Signing in..." : "Sign In"}
+                    {loading ? "Signing in..." : "Sign In as Admin"}
                   </Button>
                 </form>
 
-                {/* Divider */}
-                <div className="my-6 flex items-center gap-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground">OR</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-
-                {/* Guest Option */}
-                <div className="space-y-3 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    New here? You can book as a guest without signing in.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate("/booking")}
-                  >
-                    Continue as Guest
-                  </Button>
-                </div>
-
-                {/* Register Link */}
                 <div className="mt-6 text-center text-sm text-muted-foreground">
-                  Don't have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => navigate("/register")}
+                    onClick={() => navigate("/")}
                     className="text-primary hover:underline font-semibold"
                   >
-                    Create one
+                    Back to Home
                   </button>
                 </div>
               </CardContent>

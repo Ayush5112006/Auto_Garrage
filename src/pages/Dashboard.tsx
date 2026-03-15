@@ -4,266 +4,221 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, Car, LogOut, Plus, Settings } from "lucide-react";
-import { TiltCard } from "@/components/ui/tilt-card";
+import { Input } from "@/components/ui/input";
+import { Calendar, Clock, Car, LogOut, Plus, Settings, User as UserIcon, Check, X } from "lucide-react";
+import { getBookingsForUser, type BookingRecord } from "@/lib/bookings";
+import { useAuth } from "@/context/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api-client";
 
-interface User {
-  id?: number;
-  name: string;
-  email: string;
-}
-
-interface Booking {
-  trackingId: string;
-  name: string;
-  email: string;
-  phone: string;
-  vehicle: string;
-  services: Array<{ id: string; name?: string; price?: number }>;
-  date: string;
-  time: string;
-  total: number;
-  status: string;
-  createdAt: string;
-}
+type Booking = BookingRecord;
 
 const Dashboard = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: authLoading, logout, refreshUser } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem("user");
-    const userBookings = localStorage.getItem("bookings");
-
-    if (!storedUser) {
-      navigate("/login");
+    if (!authLoading && !user) {
+      navigate("/register");
       return;
     }
 
-    try {
-      setUser(JSON.parse(storedUser));
-      if (userBookings) {
-        const allBookings = JSON.parse(userBookings);
-        const userSpecificBookings = allBookings.filter(
-          (b: Booking) => b.email === JSON.parse(storedUser).email
-        );
-        setBookings(userSpecificBookings);
-      }
-    } catch (error) {
-      console.error("Error loading user data:", error);
-      navigate("/login");
+    if (authLoading || !user) {
+      return;
     }
-  }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    navigate("/");
+    setNewName(user.name);
+
+    let isMounted = true;
+    const loadBookings = async () => {
+      try {
+        const rows = await getBookingsForUser({ userId: user.id, email: user.email });
+        if (isMounted) {
+          setBookings(rows);
+        }
+      } catch (error) {
+        console.error("Error loading bookings:", error);
+      }
+    };
+
+    loadBookings();
+    return () => { isMounted = false; };
+  }, [navigate, user, authLoading]);
+
+  const handleLogout = async () => {
+    await logout();
+  };
+
+  const handleSaveProfile = async () => {
+    if (!newName.trim()) return;
+    setIsSaving(true);
+    try {
+      const { error } = await api.updateProfileApi({ name: newName.trim() });
+      if (error) throw new Error(error);
+
+      toast({ title: "Profile updated", description: "Your changes have been saved." });
+      await refreshUser();
+      setIsEditing(false);
+    } catch (error: any) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-800";
-      case "confirmed":
-        return "bg-blue-100 text-blue-800";
-      case "in progress":
-        return "bg-purple-100 text-purple-800";
-      case "completed":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+      case "pending": return "bg-yellow-100 text-yellow-800";
+      case "confirmed": return "bg-blue-100 text-blue-800";
+      case "in progress": return "bg-purple-100 text-purple-800";
+      case "completed": return "bg-green-100 text-green-800";
+      default: return "bg-gray-100 text-gray-800";
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main className="pt-32 pb-24 bg-background">
-          <div className="container mx-auto px-4 text-center">
-            <p className="text-muted-foreground">Loading...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
+  if (authLoading || !user) {
+    return <div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>;
   }
 
   return (
-    <div className="min-h-screen">
-
-      <main className="pt-32 pb-24 bg-background">
-        <div className="container mx-auto px-4">
+    <div className="min-h-screen flex flex-col">
+      <main className="flex-1 pt-32 pb-24 bg-background">
+        <div className="page-shell max-w-6xl">
           {/* Header */}
-          <div className="mb-12">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="font-display text-4xl text-foreground mb-2">Dashboard</h1>
-                <p className="text-muted-foreground">Welcome back, {user.name}!</p>
-              </div>
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                className="gap-2"
-              >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+            <div>
+              <h1 className="text-4xl font-display text-foreground mb-2">My Account</h1>
+              <p className="text-muted-foreground flex items-center gap-2">
+                <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 capitalize font-bold">
+                  {user.role}
+                </Badge>
+                Welcome back, {user.name}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button onClick={() => navigate("/booking")} className="gap-2 shadow-lg shadow-primary/20">
+                <Plus className="w-4 h-4" />
+                Book Service
+              </Button>
+              <Button onClick={handleLogout} variant="outline" className="gap-2">
                 <LogOut className="w-4 h-4" />
                 Logout
               </Button>
             </div>
           </div>
 
-          {/* User Profile Card */}
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Name</p>
-                  <p className="text-lg font-semibold">{user.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Email</p>
-                  <p className="text-lg font-semibold break-all">{user.email}</p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                className="mt-6 gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                Edit Profile
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="grid lg:grid-cols-3 gap-8">
+            {/* Sidebar / Profile Settings */}
+            <div className="lg:col-span-1 space-y-6">
+              <Card className="card-simple overflow-hidden">
+                <div className="h-24 bg-gradient-to-r from-primary/20 to-primary/40" />
+                <CardContent className="p-6 -mt-10 relative">
+                  <div className="w-20 h-20 rounded-2xl bg-card border-4 border-background shadow-xl flex items-center justify-center text-primary text-3xl font-display mb-4">
+                    {user.name[0]}
+                  </div>
 
-          {/* Booking History */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <h2 className="font-display text-2xl text-foreground">Booking History</h2>
-              <Button onClick={() => navigate("/booking")} className="gap-2">
-                <Plus className="w-4 h-4" />
-                New Booking
-              </Button>
+                  {isEditing ? (
+                    <div className="space-y-4 pt-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Display Name</label>
+                        <Input value={newName} onChange={e => setNewName(e.target.value)} autoFocus />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleSaveProfile} disabled={isSaving} className="flex-1 gap-1">
+                          <Check className="w-3 h-3" /> Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setIsEditing(false); setNewName(user.name); }} className="gap-1">
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-xl font-bold">{user.name}</h3>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="w-full gap-2 text-xs font-bold uppercase">
+                        <Settings className="w-3 h-3" />
+                        Edit Profile
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="space-y-2">
+                <Button variant="ghost" className="w-full justify-start gap-3 font-semibold h-12 hover:bg-muted" onClick={() => navigate("/track")}>
+                  <Clock className="w-4 h-4 text-primary" /> Track Active Booking
+                </Button>
+                <Button variant="ghost" className="w-full justify-start gap-3 font-semibold h-12 hover:bg-muted" onClick={() => navigate("/garages")}>
+                  <Car className="w-4 h-4 text-primary" /> Browse Garages
+                </Button>
+              </div>
             </div>
 
-            {bookings.length > 0 ? (
-              <div className="space-y-4">
-                {bookings.map((booking) => (
-                  <Card key={booking.trackingId} className="overflow-hidden">
-                    <CardContent className="p-6">
-                      <div className="grid md:grid-cols-4 gap-4 mb-4">
-                        {/* Tracking ID */}
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Tracking ID</p>
-                          <p className="font-mono font-semibold text-primary">
-                            {booking.trackingId}
-                          </p>
-                        </div>
+            {/* Bookings Area */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-bold">Booking History</h2>
+                <Badge variant="secondary" className="px-3 py-1">{bookings.length} Total</Badge>
+              </div>
 
-                        {/* Date & Time */}
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Appointment</p>
-                          <p className="font-semibold">
-                            {new Date(booking.date).toLocaleDateString("en-IN")}
-                          </p>
-                          <p className="text-sm text-muted-foreground">{booking.time}</p>
-                        </div>
-
-                        {/* Services */}
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Services</p>
-                          <div className="flex flex-wrap gap-1">
-                            {booking.services.slice(0, 2).map((service, idx) => (
-                              <Badge key={idx} variant="secondary" className="text-xs">
-                                {service.name || "Service"}
-                              </Badge>
-                            ))}
-                            {booking.services.length > 2 && (
-                              <Badge variant="secondary" className="text-xs">
-                                +{booking.services.length - 2}
-                              </Badge>
-                            )}
+              {bookings.length === 0 ? (
+                <Card className="text-center py-16 border-dashed bg-muted/20">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Car className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">No repair history found</h3>
+                  <p className="text-muted-foreground mb-8 max-w-sm mx-auto">You haven't made any bookings yet. Let's get your vehicle checked by experts!</p>
+                  <Button onClick={() => navigate("/booking")} size="lg">Make New Booking</Button>
+                </Card>
+              ) : (
+                <div className="grid gap-4">
+                  {bookings.map((booking) => (
+                    <Card key={booking.trackingId} className="card-simple hover:border-primary/50 transition-all group overflow-hidden">
+                      <CardContent className="p-0">
+                        <div className="flex flex-col sm:flex-row">
+                          <div className="flex-1 p-6 space-y-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[10px] font-mono font-bold bg-muted px-2 py-0.5 rounded leading-none">#{booking.trackingId}</span>
+                              <Badge className={`${getStatusColor(booking.status)} uppercase text-[9px] font-bold border-none`}>{booking.status}</Badge>
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-bold group-hover:text-primary transition-colors">{booking.vehicle}</h3>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                <Calendar className="w-3 h-3" /> {new Date(booking.date).toLocaleDateString()} at {booking.time}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {booking.services.map((s, i) => (
+                                <span key={i} className="text-[10px] bg-secondary/50 px-2 py-0.5 rounded-full font-medium">{s.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="bg-muted/30 sm:w-48 p-6 flex flex-col justify-between items-end gap-4">
+                            <p className="text-2xl font-display font-bold text-primary">₹{booking.total.toLocaleString()}</p>
+                            <Button size="sm" variant="outline" className="w-full gap-2 text-[10px] font-bold uppercase tracking-wider" onClick={() => { localStorage.setItem("lastTrackingId", booking.trackingId); navigate("/track"); }}>
+                              View Status
+                            </Button>
                           </div>
                         </div>
-
-                        {/* Status & Total */}
-                        <div className="flex items-center justify-between md:flex-col gap-2">
-                          <Badge className={getStatusColor(booking.status)}>
-                            {booking.status}
-                          </Badge>
-                          <p className="font-display text-lg text-primary">
-                            ₹{booking.total.toLocaleString("en-IN")}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Action */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          localStorage.setItem("lastTrackingId", booking.trackingId);
-                          navigate("/track");
-                        }}
-                        className="gap-2"
-                      >
-                        <Clock className="w-4 h-4" />
-                        Track Booking
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="text-center py-12">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Car className="w-8 h-8 text-muted-foreground" />
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                <h3 className="text-lg font-semibold mb-2">No Bookings Yet</h3>
-                <p className="text-muted-foreground mb-6">
-                  You haven't made any bookings yet. Start by booking a service!
-                </p>
-                <Button onClick={() => navigate("/booking")}>
-                  Make Your First Booking
-                </Button>
-              </Card>
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid md:grid-cols-3 gap-4">
-            <Button
-              onClick={() => navigate("/garages")}
-              variant="outline"
-              className="h-auto py-6 flex-col gap-2"
-            >
-              <Car className="w-6 h-6" />
-              Browse Garages
-            </Button>
-            <Button
-              onClick={() => navigate("/booking")}
-              variant="outline"
-              className="h-auto py-6 flex-col gap-2"
-            >
-              <Calendar className="w-6 h-6" />
-              New Booking
-            </Button>
-            <Button
-              onClick={() => navigate("/track")}
-              variant="outline"
-              className="h-auto py-6 flex-col gap-2"
-            >
-              <Clock className="w-6 h-6" />
-              Track Order
-            </Button>
+              )}
+            </div>
           </div>
         </div>
       </main>
+
       <Footer />
     </div>
   );

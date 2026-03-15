@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Footer from "@/components/Footer";
+import ThreeDCar from "@/components/ThreeDCar";
 import { Button } from "@/components/ui/button";
 import { Droplets, Settings, Disc, Sparkles, Wind, CircleDot, Battery, Gauge, Wrench, Zap, Check, ArrowRight } from "lucide-react";
 import { TiltCard } from "@/components/ui/tilt-card";
@@ -94,6 +95,80 @@ const ServicesPage = () => {
             </p>
           </div>
 
+          {/* Destroyed Car 3D Display - Accident Recovery Showcase */}
+          <div className="mb-20 relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 via-orange-500/10 to-yellow-500/10 rounded-3xl blur-3xl" />
+            <div className="relative bg-gradient-to-br from-card to-muted rounded-3xl p-8 md:p-12 border border-border overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-5">
+                <div className="absolute inset-0" style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ff0000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                }} />
+              </div>
+
+              <div className="grid lg:grid-cols-2 gap-8 items-center relative z-10">
+                {/* Left Side - Text Content */}
+                <div className="text-center lg:text-left order-2 lg:order-1">
+                  <div className="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-full px-4 py-2 mb-6">
+                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <span className="text-sm text-red-500 font-medium">Accident Recovery Specialists</span>
+                  </div>
+
+                  <h2 className="font-display text-3xl md:text-4xl text-foreground mb-4">
+                    WE RESTORE
+                    <span className="block text-primary">DAMAGED VEHICLES</span>
+                  </h2>
+
+                  <p className="text-muted-foreground text-lg mb-6">
+                    From minor dents to major collision damage, our expert team can restore your vehicle to its former glory. We handle insurance claims and provide comprehensive accident recovery services.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-background/50 backdrop-blur-sm rounded-xl p-4 border border-border">
+                      <div className="text-2xl font-display text-primary mb-1">24/7</div>
+                      <div className="text-sm text-muted-foreground">Emergency Service</div>
+                    </div>
+                    <div className="bg-background/50 backdrop-blur-sm rounded-xl p-4 border border-border">
+                      <div className="text-2xl font-display text-primary mb-1">100%</div>
+                      <div className="text-sm text-muted-foreground">Insurance Approved</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                    <Button size="lg" className="text-lg px-8" asChild>
+                      <Link to="/contact">
+                        Get Free Estimate
+                        <ArrowRight className="ml-2 w-5 h-5" />
+                      </Link>
+                    </Button>
+                    <Button size="lg" variant="outline" className="text-lg px-8" asChild>
+                      <Link to="/garages">Find Repair Shop</Link>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Right Side - 3D Destroyed Car */}
+                <div className="order-1 lg:order-2">
+                  <div className="relative h-[400px] md:h-[500px] lg:h-[600px]">
+                    <div className="absolute -inset-4 bg-red-500/20 rounded-3xl blur-2xl animate-pulse" />
+                    <div className="relative h-full bg-gradient-to-br from-background/80 to-muted/80 backdrop-blur-sm rounded-2xl border border-red-500/20 overflow-hidden shadow-2xl">
+                      <ThreeDCar
+                        modelPath="/models/ferrari.glb"
+                        quality="low"
+                        interactive={false}
+                      />
+
+                      {/* Overlay Badge */}
+                      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md px-6 py-3 rounded-full border border-red-500/30">
+                        <p className="text-white font-semibold text-center">Vehicle Service Preview</p>
+                        <p className="text-red-400 text-xs text-center">Fast 3D Load Mode</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="grid md:grid-cols-2 gap-8">
             {allServices.map((service, index) => (

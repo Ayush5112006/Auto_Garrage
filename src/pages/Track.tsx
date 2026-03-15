@@ -1,30 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, Car, MapPin, AlertCircle, CheckCircle2, Truck, Home } from "lucide-react";
+import { getBookingByTrackingId, type BookingRecord } from "@/lib/bookings";
 
-interface Booking {
-  trackingId: string;
-  name: string;
-  email: string;
-  phone: string;
-  vehicle: string;
-  services: Array<{ id: string; name?: string; price?: number }>;
-  date: string;
-  time: string;
-  deliveryOption?: string;
-  deliveryFee?: number;
-  homeAddress?: string;
-  subtotal?: number;
-  total: number;
-  status: string;
-  createdAt: string;
-}
+type Booking = BookingRecord;
 
 const Track = () => {
   const [trackingId, setTrackingId] = useState("");
@@ -33,26 +17,23 @@ const Track = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setNotFound(false);
     setBooking(null);
 
-    // Simulate API call delay
-    setTimeout(() => {
-      const bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
-      const found = bookings.find((b: Booking) => b.trackingId === trackingId.toUpperCase());
-
-      if (found) {
-        setBooking(found);
-        setNotFound(false);
-      } else {
-        setNotFound(true);
-        setBooking(null);
-      }
+    try {
+      const normalized = trackingId.trim().toUpperCase();
+      const found = await getBookingByTrackingId(normalized);
+      setBooking(found);
+      setNotFound(false);
+    } catch (_error) {
+      setNotFound(true);
+      setBooking(null);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -83,7 +64,6 @@ const Track = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
           <div className="text-center max-w-2xl mx-auto mb-12">

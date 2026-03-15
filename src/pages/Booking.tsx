@@ -21,7 +21,6 @@ export const bookingSchema = z.object({
   homeAddress: z.string().min(5, "Address is required").optional(),
   notes: z.string().max(500).optional(),
 });
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +31,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { CalendarDays, Clock, Car, User, Mail, Phone, CheckCircle, Truck, Home, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { createBooking } from "@/lib/bookings";
+import { useAuth } from "@/context/useAuth";
 
 const services = [
   { id: "oil-change", name: "Oil Change", price: 2499 },
@@ -56,6 +57,7 @@ const timeSlots = [
 const Booking = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   type BookingFormValues = z.infer<typeof bookingSchema>;
 
@@ -77,42 +79,47 @@ const Booking = () => {
 
   const totalINR = subtotalINR + deliveryFee;
 
-  const onSubmit = (data: BookingFormValues) => {
+  const onSubmit = async (data: BookingFormValues) => {
     // Generate Tracking ID
     const trackingId = `GAR-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
     
-    // Save booking to localStorage
-    const booking = {
-      trackingId,
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      vehicle: data.vehicle,
-      services: watchedServices.map(id => {
-        const s = services.find(x => x.id === id);
-        return { id, name: s?.name, price: s?.price };
-      }),
-      date: data.date?.toISOString().split('T')[0],
-      time: data.selectedTime,
-      deliveryOption: data.deliveryOption,
-      deliveryFee: deliveryFee,
-      homeAddress: data.homeAddress || '',
-      subtotal: subtotalINR,
-      total: totalINR,
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-    };
-    
-    const existingBookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-    existingBookings.push(booking);
-    localStorage.setItem('bookings', JSON.stringify(existingBookings));
-    localStorage.setItem('lastTrackingId', trackingId);
-    
-    setIsSubmitted(true);
-    toast({
-      title: "Booking Confirmed!",
-      description: `Tracking ID: ${trackingId}`,
+    const bookingServices = watchedServices.map((id) => {
+      const s = services.find((x) => x.id === id);
+      return { id, name: s?.name, price: s?.price };
     });
+
+    try {
+      await createBooking({
+        trackingId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        vehicle: data.vehicle,
+        services: bookingServices,
+        date: data.date?.toISOString().split("T")[0] || "",
+        time: data.selectedTime,
+        deliveryOption: data.deliveryOption,
+        deliveryFee: deliveryFee,
+        homeAddress: data.homeAddress || "",
+        subtotal: subtotalINR,
+        total: totalINR,
+        status: "Pending",
+        userId: user?.id,
+      });
+
+      localStorage.setItem("lastTrackingId", trackingId);
+      setIsSubmitted(true);
+      toast({
+        title: "Booking Confirmed!",
+        description: `Tracking ID: ${trackingId}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Booking failed",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
 
@@ -122,7 +129,6 @@ const Booking = () => {
   if (isSubmitted) {
     return (
       <div className="min-h-screen">
-        <Navbar />
         <main className="pt-32 pb-24 bg-background">
           <div className="container mx-auto px-4">
             <div className="max-w-lg mx-auto text-center">
@@ -157,7 +163,6 @@ const Booking = () => {
 
   return (
     <div className="min-h-screen">
-      <Navbar />
       <main className="pt-32 pb-24 bg-background">
         <div className="container mx-auto px-4">
 
@@ -209,8 +214,8 @@ const Booking = () => {
                         </div>
                         <span className="font-medium">{service.name}</span>
                       </div>
-                      <span className="font-display text-lg text-primary">
-                        ₹{service.price.toLocaleString('en-IN')}
+                      <span className="font-display text-lg text-foreground">
+                        Rs {service.price.toLocaleString('en-IN')}
                       </span>
                     </label>
                   ))}
@@ -365,7 +370,7 @@ const Booking = () => {
                               {option.id === 'pickup' && <Truck className="w-4 h-4 text-primary" />}
                               {option.id === 'delivery' && <MapPin className="w-4 h-4 text-primary" />}
                               <p className="font-medium">{option.label}</p>
-                              <span className="ml-auto text-primary font-display">+₹{option.price}</span>
+                              <span className="ml-auto text-foreground font-display">+Rs {option.price}</span>
                             </div>
                             <p className="text-sm text-muted-foreground">{option.description}</p>
                           </div>
@@ -405,7 +410,7 @@ const Booking = () => {
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-muted-foreground">Service Total</div>
                       <div className="text-right">
-                        <div className="font-display text-lg text-primary">₹{subtotalINR.toLocaleString('en-IN')}</div>
+                        <div className="font-display text-lg text-foreground">Rs {subtotalINR.toLocaleString('en-IN')}</div>
                       </div>
                     </div>
                     {deliveryFee > 0 && (
@@ -414,20 +419,28 @@ const Booking = () => {
                           Delivery Fee
                           <span className="ml-1 text-xs">({deliveryOptions.find(o => o.id === watchedDeliveryOption)?.label})</span>
                         </div>
-                        <div className="font-display text-lg text-primary">+₹{deliveryFee.toLocaleString('en-IN')}</div>
+                        <div className="font-display text-lg text-foreground">+Rs {deliveryFee.toLocaleString('en-IN')}</div>
                       </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t">
                       <div className="font-semibold">Total Amount</div>
-                      <div className="font-display text-2xl text-primary">₹{totalINR.toLocaleString('en-IN')}</div>
+                      <div className="font-display text-2xl text-foreground">Rs {totalINR.toLocaleString('en-IN')}</div>
                     </div>
                   </div>
 
                   <div className="flex gap-3">
-                    <Button type="submit" className="flex-1" size="lg" disabled={!isValid || isSubmitting}>
+                    <Button
+                      type="submit"
+                      className="flex-1"
+                      size="lg"
+                      disabled={!isValid || isSubmitting}
+                    >
                       Confirm Booking
                     </Button>
                   </div>
+                  {!isValid && (
+                    <p className="text-xs text-muted-foreground">Fill all required fields to enable booking.</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
