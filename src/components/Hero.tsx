@@ -1,16 +1,8 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Shield, Clock, Award } from "lucide-react";
-import ThreeDCar from "./ThreeDCar";
+import { ArrowRight, Shield, Clock, Award, Wrench, Users, CheckCircle } from "lucide-react";
 
 const Hero = () => {
-  const [currentCarIndex] = useState(0);
-
-  const cars = [
-    { name: "Ferrari", model: "458 Italia", color: "Red", hex: "#DC0000", modelPath: "/models/ferrari.glb" },
-  ];
-
   const stats = [
     { icon: Shield, label: "Certified", value: "50+" },
     { icon: Clock, label: "Experience", value: "15+ yrs" },
@@ -62,11 +54,31 @@ const Hero = () => {
           </div>
 
           <div className="relative hidden lg:block animate-fade-in-delayed">
-            <div className="w-full h-[500px] relative rounded-3xl overflow-hidden bg-muted/30 border border-border/50">
-              <ThreeDCar
-                modelPath={cars[currentCarIndex].modelPath}
-                color={cars[currentCarIndex].hex}
-              />
+            <div className="w-full h-[500px] relative rounded-3xl overflow-hidden bg-gradient-to-br from-primary/20 to-primary/5 border border-border/50 flex items-center justify-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8">
+                <div className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                  <Wrench className="w-12 h-12 text-primary" />
+                </div>
+                <h3 className="text-2xl font-bold text-foreground mb-4">Professional Auto Care</h3>
+                <div className="space-y-3 w-full max-w-xs">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                    <span className="text-sm text-muted-foreground">Expert technicians</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                    <span className="text-sm text-muted-foreground">Quality parts</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                    <span className="text-sm text-muted-foreground">Transparent pricing</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-primary shrink-0" />
+                    <span className="text-sm text-muted-foreground">Warranty included</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="absolute -bottom-6 -left-6 bg-background p-6 rounded-2xl shadow-xl border border-border max-w-[200px]">

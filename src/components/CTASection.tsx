@@ -1,9 +1,20 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, LogIn } from "lucide-react";
+import { useAuth } from "../context/useAuth";
 
 const CTASection = () => {
-  const isLoggedIn = !!localStorage.getItem("user");
+  const { user } = useAuth();
+  const isLoggedIn = user !== null && user !== undefined;
+  const rawRole = user?.role;
+  const userRole = typeof rawRole === "string" ? rawRole : "customer";
+
+  const getDashboardUrl = (role: string) => {
+    if (role === "admin") return "/admin/dashboard";
+    if (role === "manager") return "/garage/dashboard";
+    if (role === "staff" || role === "mechanic") return "/mechanic/dashboard";
+    return "/customer/dashboard";
+  };
 
   return (
     <section className="py-12 md:py-24 bg-gradient-to-b from-card to-background relative overflow-hidden">
@@ -43,7 +54,7 @@ const CTASection = () => {
                 className="text-lg px-8 border-white/20 text-white hover:bg-white/10"
                 asChild
               >
-                <Link to="/dashboard">
+                <Link to={getDashboardUrl(userRole)}>
                   <LogIn className="mr-2 w-5 h-5" />
                   My Dashboard
                 </Link>

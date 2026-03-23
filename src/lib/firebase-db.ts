@@ -20,6 +20,7 @@ import { db, storage } from "./firebase";
 const PROFILES = "profiles";
 const GARAGES = "garages";
 const GARAGE_STAFF = "garage_staff";
+const BOOKINGS = "bookings";
 
 // --- Profiles ---
 export async function getProfile(uid: string): Promise<{ role?: string; name?: string; full_name?: string } | null> {
@@ -48,18 +49,27 @@ function garageToRecord(id: string, data: DocumentData): Record<string, unknown>
   return {
     id,
     ...data,
-    created_at: data.createdAt?.toMillis?.() ? new Date(data.createdAt.toMillis()).toISOString() : data.created_at,
+    created_at:
+      typeof data.createdAt === "string"
+        ? data.createdAt
+        : data.createdAt?.toMillis?.()
+          ? new Date(data.createdAt.toMillis()).toISOString()
+          : data.created_at,
   };
 }
 
 export async function getGaragesList(): Promise<Record<string, unknown>[]> {
-  const q = query(
-    collection(db, GARAGES),
-    orderBy("createdAt", "desc"),
-    limit(200)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => garageToRecord(d.id, d.data()));
+  // Firestore can throw if `createdAt` field types are inconsistent (Timestamp vs string).
+  // In that case, fall back to a non-ordered query so the UI still shows garages.
+  try {
+    const q = query(collection(db, GARAGES), orderBy("createdAt", "desc"), limit(200));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => garageToRecord(d.id, d.data()));
+  } catch {
+    const q = query(collection(db, GARAGES), limit(200));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => garageToRecord(d.id, d.data()));
+  }
 }
 
 export async function getGarageById(garageId: string): Promise<Record<string, unknown> | null> {
@@ -189,4 +199,16 @@ export async function getGarageStaffByGarage(garageId: string): Promise<Record<s
   const q = query(collection(db, GARAGE_STAFF), where("garageId", "==", garageId));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getBookingsListFirestore(): Promise<Record<string, unknown>[]> {
+  try {
+    const q = query(collection(db, BOOKINGS), orderBy("createdAt", "desc"), limit(500));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch {
+    const q = query(collection(db, BOOKINGS), limit(500));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
 }

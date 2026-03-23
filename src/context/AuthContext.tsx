@@ -19,6 +19,14 @@ const normalizeRole = (value?: string | null): UserRole => {
   return USER_ROLE;
 };
 
+const getDashboardUrl = (role?: UserRole): string => {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "admin") return "/admin/dashboard";
+  if (normalized === "manager") return "/garage/dashboard";
+  if (normalized === "staff" || normalized === "mechanic") return "/mechanic/dashboard";
+  return "/customer/dashboard";
+};
+
 const hasCookie = (name: string) => {
   if (typeof document === "undefined") return false;
   return document.cookie.split(";").some((part) => part.trim().startsWith(`${name}=`));
@@ -37,6 +45,22 @@ const clearCookie = (name: string) => {
 const withKnownRole = (candidate: User): User => {
   if (!candidate) return candidate;
   return { ...candidate, role: normalizeRole(candidate.role) };
+};
+
+const mergeProfileFields = (baseUser: User, profileData: any): User => {
+  if (!baseUser) return baseUser;
+  return {
+    ...baseUser,
+    mobileNumber: profileData?.mobileNumber || "",
+    addressLine1: profileData?.addressLine1 || "",
+    addressLine2: profileData?.addressLine2 || "",
+    city: profileData?.city || "",
+    state: profileData?.state || "",
+    country: profileData?.country || "",
+    pincode: profileData?.pincode || "",
+    bio: profileData?.bio || "",
+    photoUrl: profileData?.photoUrl || "",
+  };
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -96,7 +120,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         if (mounted) setUser(nextUser);
       } else {
-        setUser(null);
+        try {
+          const [currentUserResult, profileResult] = await Promise.all([
+            api.getCurrentUser(),
+            api.getProfileDetailsApi().catch(() => ({ data: null })),
+          ]);
+
+          const payload = currentUserResult.data as { user?: User } | undefined;
+          if (!currentUserResult.error && payload?.user) {
+            let nextUser = withKnownRole(payload.user);
+            nextUser = mergeProfileFields(nextUser, profileResult?.data);
+            if (mounted) setUser(nextUser);
+          } else {
+            setUser(null);
+          }
+        } catch {
+          setUser(null);
+        }
       }
       setLoading(false);
     });
@@ -118,22 +158,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async () => {
     try {
-      const { data, error } = await api.getCurrentUser();
-      const payload = data as { user?: User } | undefined;
-      if (error || !payload?.user) {
+      const [currentUserResult, profileResult] = await Promise.all([
+        api.getCurrentUser(),
+        api.getProfileDetailsApi().catch(() => ({ data: null })),
+      ]);
+
+      const payload = currentUserResult.data as { user?: User } | undefined;
+      if (currentUserResult.error || !payload?.user) {
         setUser(null);
         return;
       }
 
-      const hydrated = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
+      let hydrated = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
+      hydrated = mergeProfileFields(hydrated, profileResult?.data);
       setUser(hydrated);
     } catch {
       setUser(null);
     }
   };
 
-  const login = async (email: string, password: string, redirectTo?: string, rememberMe = true) => {
-    const { data, error } = await api.login(email, password, rememberMe);
+  const login = async (email?: string, password?: string, mobileNumber?: string, rememberMe = true) => {
+    if (!email && !mobileNumber) {
+      throw new Error("Either email or mobile number is required");
+    }
+
+    const { data, error } = await api.login(email, password, mobileNumber, rememberMe);
     const payload = data as { user?: User } | undefined;
     if (error) {
       throw new Error(error);
@@ -142,16 +191,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let nextUser: User = null;
     if (payload?.user) {
       nextUser = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
+      
+      // Fetch full profile details including phone number and address
+      try {
+        const { data: profileData } = await api.getProfileDetailsApi();
+        if (profileData) {
+          nextUser = mergeProfileFields(nextUser, profileData);
+        }
+      } catch (err) {
+        console.warn("Could not fetch full profile details", err);
+      }
+      
       setUser(nextUser);
     }
 
-    if (nextUser && !redirectTo) {
-      if (nextUser.role === "admin") navigate("/admin");
-      else if (nextUser.role === "manager") navigate("/garagehost");
-      else if (nextUser.role === "mechanic" || nextUser.role === "staff") navigate("/staff");
-      else navigate("/dashboard");
-    } else if (nextUser && redirectTo) {
-      navigate(redirectTo);
+    if (nextUser) {
+      navigate(getDashboardUrl(nextUser.role));
     }
 
     return nextUser;
@@ -166,14 +221,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (payload?.user) {
       const nextUser = withKnownRole(payload.user) || (await hydrateRoleFromProfile(payload.user));
       setUser(nextUser);
-      navigate('/');
+      navigate(getDashboardUrl(nextUser.role));
     }
   };
 
   const logout = async () => {
+    const currentRole = user?.role || "customer";
+    const loginUrl = currentRole === "admin" ? "/admin/login" 
+                    : currentRole === "manager" ? "/garage/login"
+                    : currentRole === "staff" || currentRole === "mechanic" ? "/mechanic/login"
+                    : "/customer/login";
+    
     await api.logout();
     setUser(null);
-    navigate('/');
+    navigate(loginUrl);
   };
 
   return (

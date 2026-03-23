@@ -10,140 +10,89 @@ import { Loader2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { GlobalShortcuts } from "./components/GlobalShortcuts";
 import { RouteChangeProgress } from "./components/RouteChangeProgress";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+import GuestRoute from "./components/auth/GuestRoute";
+import Index from "./customer/Index";
 
 // Lazy load pages
-const Index = lazy(() => import("./pages/Index"));
-const About = lazy(() => import("./pages/About"));
-const Booking = lazy(() => import("./pages/Booking"));
-const Contact = lazy(() => import("./pages/Contact"));
-const Register = lazy(() => import("./pages/Register"));
-const ServicesPage = lazy(() => import("./pages/ServicesPage"));
-const Admin = lazy(() => import("./pages/Admin"));
-const AdminLogin = lazy(() => import("./pages/AdminLogin"));
-const MechanicDashboard = lazy(() => import("./pages/MechanicDashboard"));
-const StaffLogin = lazy(() => import("./pages/StaffLogin"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Track = lazy(() => import("./pages/Track"));
-const GarageListing = lazy(() => import("./pages/GarageListing"));
-const GarageDetail = lazy(() => import("./pages/GarageDetail"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Pricing = lazy(() => import("./pages/Pricing"));
-const AddGarage = lazy(() => import("./pages/AddGarage"));
-const GarageHost = lazy(() => import("./pages/GarageHost"));
-const AddStaff = lazy(() => import("./pages/AddStaff"));
-const GarageLogin = lazy(() => import("./pages/GarageLogin"));
-const CustomerLogin = lazy(() => import("./pages/CustomerLogin"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
-// Background component loaded separately
-const BackgroundRotatingCar = lazy(() => import("./components/BackgroundRotatingCar"));
+// Admin Pages
+const Admin = lazy(() => import("./admin/Admin"));
+const AdminLogin = lazy(() => import("./admin/AdminLogin"));
+
+// Mechanic/Staff Pages
+const MechanicDashboard = lazy(() => import("./mechanic/MechanicDashboard"));
+const StaffDashboard = lazy(() => import("./mechanic/StaffDashboard"));
+const StaffLogin = lazy(() => import("./mechanic/StaffLogin"));
+const AddStaff = lazy(() => import("./mechanic/AddStaff"));
+
+// Garage Pages
+const GarageHost = lazy(() => import("./garage/GarageHost"));
+const GarageLogin = lazy(() => import("./garage/GarageLogin"));
+const GarageListing = lazy(() => import("./garage/GarageListing"));
+const GarageDetail = lazy(() => import("./garage/GarageDetail"));
+const AddGarage = lazy(() => import("./garage/AddGarage"));
+
+// Customer Pages
+const About = lazy(() => import("./customer/About"));
+const Booking = lazy(() => import("./customer/Booking"));
+const Contact = lazy(() => import("./customer/Contact"));
+const Register = lazy(() => import("./customer/Register"));
+const ServicesPage = lazy(() => import("./customer/ServicesPage"));
+const Dashboard = lazy(() => import("./customer/Dashboard"));
+const Pricing = lazy(() => import("./customer/Pricing"));
+const Track = lazy(() => import("./customer/Tracking"));
+const CustomerLogin = lazy(() => import("./customer/CustomerLogin"));
+const ForgotPassword = lazy(() => import("./customer/ForgotPassword"));
+const ResetPassword = lazy(() => import("./customer/ResetPassword"));
+
+// Shared Pages
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const PageLoader = () => (
   <div className="flex h-screen w-full items-center justify-center bg-background">
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex items-center justify-center">
       <div className="relative">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
         <div className="absolute inset-0 blur-xl bg-primary/20 animate-pulse" />
       </div>
-      <p className="text-xs font-bold text-primary uppercase tracking-[0.3em] animate-pulse">Initializing System</p>
     </div>
   </div>
 );
 
-const RequireAuth = ({ children, redirectTo = "/register" }: { children: JSX.Element; redirectTo?: string }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  if (!user) {
-    return <Navigate to={redirectTo} replace />;
-  }
-
-  return children;
+// Helper function to get dashboard URL for role
+const getDashboardUrl = (role: string) => {
+  const normalizedRole = String(role || "").toLowerCase();
+  if (normalizedRole === "admin") return "/admin/dashboard";
+  if (normalizedRole === "manager") return "/garage/dashboard";
+  if (normalizedRole === "staff" || normalizedRole === "mechanic") return "/mechanic/dashboard";
+  return "/customer/dashboard";
 };
 
-const RequireAdmin = ({ children }: { children: JSX.Element }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  if (!user) {
-    return <Navigate to="/admin/login" replace />;
-  }
-
-  if (String(user.role || "").toLowerCase() !== "admin") {
-    return <Navigate to="/" replace />;
-  }
-
-  return children;
+// Helper function to get login URL for role
+const getLoginUrl = (role: string) => {
+  const normalizedRole = String(role || "").toLowerCase();
+  if (normalizedRole === "admin") return "/admin/login";
+  if (normalizedRole === "manager") return "/garage/login";
+  if (normalizedRole === "staff" || normalizedRole === "mechanic") return "/mechanic/login";
+  return "/customer/login";
 };
 
-const RequireRole = ({ children, roles, redirectTo = "/" }: { children: JSX.Element; roles: string[]; redirectTo?: string }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  if (!user) {
-    return <Navigate to={redirectTo} replace />;
-  }
-
-  const normalizedRole = String(user.role || "").toLowerCase();
-  if (!roles.map((role) => role.toLowerCase()).includes(normalizedRole)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return children;
-};
-
-const GuestOnly = ({ children }: { children: JSX.Element }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  if (!user) {
-    return children;
-  }
-
-  const role = String(user.role || "").toLowerCase();
-  if (role === "admin") return <Navigate to="/admin" replace />;
-  if (role === "staff" || role === "mechanic") return <Navigate to="/staff" replace />;
-  if (role === "manager") return <Navigate to="/garagehost" replace />;
-  return <Navigate to="/dashboard" replace />;
-};
-
+// Background layer - removed 3D car component
 const BackgroundLayer = () => {
   const { pathname } = useLocation();
 
   const noCanvasBackground =
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/staff") ||
-    pathname.startsWith("/garagehost") ||
-    pathname.startsWith("/garage/staff") ||
+    pathname.startsWith("/customer") ||
+    pathname.startsWith("/garage") ||
+    pathname.startsWith("/mechanic") ||
     pathname === "/login" ||
     pathname === "/register" ||
     pathname === "/forgot-password" ||
-    pathname === "/reset-password" ||
-    pathname === "/garage/login";
+    pathname === "/reset-password";
 
-  if (pathname === "/services" || noCanvasBackground) {
-    return <div className="fixed inset-0 bg-background z-[-1]" />;
-  }
-
-  return (
-    <Suspense fallback={<div className="fixed inset-0 bg-background z-[-1]" />}>
-      <BackgroundRotatingCar />
-    </Suspense>
-  );
+  return <div className="fixed inset-0 bg-background z-[-1]" />;
 };
 
 export default function App() {
@@ -168,129 +117,62 @@ export default function App() {
             <Navbar />
             <Suspense fallback={<PageLoader />}>
               <Routes>
+                {/* Public layout routes */}
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Index />} />
                   <Route path="/services" element={<ServicesPage />} />
-                  <Route
-                    path="/booking"
-                    element={
-                      <RequireAuth>
-                        <Booking />
-                      </RequireAuth>
-                    }
-                  />
                   <Route path="/about" element={<About />} />
                   <Route path="/contact" element={<Contact />} />
                   <Route path="/garages" element={<GarageListing />} />
-                  <Route
-                    path="/garagehost"
-                    element={
-                      <RequireRole roles={["manager", "admin"]} redirectTo="/garage/login">
-                        <GarageHost />
-                      </RequireRole>
-                    }
-                  />
-                  <Route
-                    path="/garage/add"
-                    element={
-                      <RequireAuth>
-                        <AddGarage />
-                      </RequireAuth>
-                    }
-                  />
-                  <Route
-                    path="/garage/staff/add"
-                    element={
-                      <RequireAuth>
-                        <AddStaff />
-                      </RequireAuth>
-                    }
-                  />
-                  <Route path="/garage/:id" element={<GarageDetail />} />
-                  <Route
-                    path="/track"
-                    element={
-                      <RequireAuth>
-                        <Track />
-                      </RequireAuth>
-                    }
-                  />
-                  <Route
-                    path="/register"
-                    element={
-                      <GuestOnly>
-                        <Register />
-                      </GuestOnly>
-                    }
-                  />
-                  <Route
-                    path="/dashboard"
-                    element={
-                      <RequireAuth>
-                        <Dashboard />
-                      </RequireAuth>
-                    }
-                  />
                   <Route path="/pricing" element={<Pricing />} />
+                  <Route path="/track" element={<Track />} />
+                  <Route path="/garage/:id" element={<GarageDetail />} />
+
+                  {/* Protected public routes - any logged-in user */}
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/booking" element={<Booking />} />
+                    <Route path="/garage/add" element={<AddGarage />} />
+                    <Route path="/garage/staff/add" element={<AddStaff />} />
+                  </Route>
                 </Route>
 
-                <Route
-                  path="/login"
-                  element={
-                    <GuestOnly>
-                      <CustomerLogin />
-                    </GuestOnly>
-                  }
-                />
-                <Route
-                  path="/forgot-password"
-                  element={
-                    <GuestOnly>
-                      <ForgotPassword />
-                    </GuestOnly>
-                  }
-                />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route
-                  path="/admin/login"
-                  element={
-                    <GuestOnly>
-                      <AdminLogin />
-                    </GuestOnly>
-                  }
-                />
-                <Route
-                  path="/admin"
-                  element={
-                    <RequireAdmin>
-                      <Admin />
-                    </RequireAdmin>
-                  }
-                />
-                <Route
-                  path="/garage/login"
-                  element={
-                    <GuestOnly>
-                      <GarageLogin />
-                    </GuestOnly>
-                  }
-                />
-                <Route
-                  path="/staff/login"
-                  element={
-                    <GuestOnly>
-                      <StaffLogin />
-                    </GuestOnly>
-                  }
-                />
-                <Route
-                  path="/staff"
-                  element={
-                    <RequireRole roles={["staff", "mechanic", "admin"]} redirectTo="/staff/login">
-                      <MechanicDashboard />
-                    </RequireRole>
-                  }
-                />
+                {/* Guest-only routes (login/register/password recovery - blocked if already logged in) */}
+                <Route element={<GuestRoute />}>
+                  <Route path="/login" element={<Navigate to="/customer/login" replace />} />
+                  <Route path="/register" element={<Navigate to="/customer/register" replace />} />
+                  <Route path="/customer/login" element={<CustomerLogin />} />
+                  <Route path="/customer/register" element={<Register />} />
+                  <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route path="/garage/login" element={<GarageLogin />} />
+                  <Route path="/mechanic/login" element={<StaffLogin />} />
+                  <Route path="/customer/forgot-password" element={<ForgotPassword />} />
+                </Route>
+
+                {/* Password reset (no auth guard - can access with token) */}
+                <Route path="/customer/reset-password" element={<ResetPassword />} />
+
+                {/* Protected: Admin only */}
+                <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                  <Route path="/admin/dashboard" element={<Admin />} />
+                </Route>
+
+                {/* Protected: Garage Manager only */}
+                <Route element={<ProtectedRoute allowedRoles={["manager"]} />}>
+                  <Route path="/garage/dashboard" element={<GarageHost />} />
+                </Route>
+
+                {/* Protected: Mechanic/Staff only */}
+                <Route element={<ProtectedRoute allowedRoles={["staff", "mechanic"]} />}>
+                  <Route path="/mechanic/dashboard" element={<StaffDashboard />} />
+                  <Route path="/mechanic/staff" element={<StaffDashboard />} />
+                </Route>
+
+                {/* Protected: Customer only */}
+                <Route element={<ProtectedRoute allowedRoles={["customer"]} />}>
+                  <Route path="/customer/dashboard" element={<Dashboard />} />
+                </Route>
+
+                {/* Catch-all 404 */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

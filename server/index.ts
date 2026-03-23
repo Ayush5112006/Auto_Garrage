@@ -3,15 +3,21 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
 
 // Load env BEFORE importing modules that depend on env vars
-dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, "..");
+
+dotenv.config({ path: path.join(projectRoot, ".env.local") });
 dotenv.config();
 
 import authRoutes from "./routes/auth";
 import garagesRoutes from "./routes/garages";
 import bookingsRoutes from "./routes/bookings";
 import staffRoutes from "./routes/staff";
+import contactRoutes from "./routes/contact";
 import { getPrismaHealth } from "./lib/prisma";
 import { isFirebaseConfigured } from "./lib/firebase-admin";
 
@@ -32,7 +38,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")
 
 // Guard backend routes if Firebase is not configured
 app.use("/api", (req, res, next) => {
-  if (req.path === "/health") {
+  if (req.path === "/health" || req.path === "/contact") {
     return next();
   }
 
@@ -50,6 +56,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/garages", garagesRoutes);
 app.use("/api/bookings", bookingsRoutes);
 app.use("/api/staff", staffRoutes);
+app.use("/api/contact", contactRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/useAuth";
 
 const isTypingElement = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -11,8 +12,16 @@ const isTypingElement = (target: EventTarget | null) => {
 export const GlobalShortcuts = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const lastKeyRef = useRef<string | null>(null);
   const lastTimeRef = useRef<number>(0);
+
+  const getDashboardUrl = (role: string) => {
+    if (role === "admin") return "/admin/dashboard";
+    if (role === "manager") return "/garage/dashboard";
+    if (role === "staff" || role === "mechanic") return "/mechanic/dashboard";
+    return "/customer/dashboard";
+  };
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -55,7 +64,7 @@ export const GlobalShortcuts = () => {
 
       if (key === "d" && lastKey === "g" && withinComboWindow) {
         event.preventDefault();
-        navigate("/dashboard");
+        navigate(getDashboardUrl(user?.role || "customer"));
         lastKeyRef.current = null;
         lastTimeRef.current = 0;
         return;

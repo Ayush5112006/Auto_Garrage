@@ -11,6 +11,7 @@ import {
   getProfile,
   createProfile,
   getGaragesList,
+  getBookingsListFirestore,
   getGarageById,
   getGarageByOwnerId,
   createGarage as createGarageFirestore,
@@ -48,6 +49,7 @@ const resolveApiUrl = () => {
 
 const API_URL = resolveApiUrl();
 const SIGNUP_COOLDOWN_KEY = "firebase_signup_cooldown_until";
+const DEBUG_API = import.meta.env.DEV && String(import.meta.env.VITE_DEBUG_API || "").toLowerCase() === "true";
 
 const normalizeRole = (value?: string | null) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -86,6 +88,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     if (!this.hasBackendApi || !this.backendApiAvailable) {
+      console.warn("🔴 [API] Backend API not configured");
       return {
         status: 503,
         error: "Backend API is not configured. Set VITE_API_URL to enable server routes.",
@@ -93,7 +96,14 @@ class ApiClient {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const url = `${this.baseUrl}${endpoint}`;
+      if (DEBUG_API) {
+        console.log("📡 [API] Making request to:", url);
+        console.log("   Method:", options.method || "GET");
+        console.log("   Headers:", options.headers || {});
+      }
+      
+      const response = await fetch(url, {
         ...options,
         credentials: "include",
         headers: {
@@ -102,6 +112,10 @@ class ApiClient {
         },
       });
 
+      if (DEBUG_API) {
+        console.log("📡 [API] Response status:", response.status);
+      }
+      
       const raw = await response.text();
       let data: any = {};
       if (raw) {
@@ -112,7 +126,12 @@ class ApiClient {
         }
       }
 
+      if (DEBUG_API) {
+        console.log("📡 [API] Response data:", data);
+      }
+
       if (!response.ok) {
+        console.error("❌ [API] Request failed:", response.status, data.error);
         if (response.status === 503 || response.status === 502) {
           this.backendApiAvailable = false;
         }
@@ -126,8 +145,12 @@ class ApiClient {
         };
       }
 
+      if (DEBUG_API) {
+        console.log("✅ [API] Request succeeded");
+      }
       return { data, status: response.status };
     } catch (error: any) {
+      console.error("🔴 [API] Network error:", error.message);
       this.backendApiAvailable = false;
       return { error: error.message || "Network error" };
     }
@@ -252,13 +275,68 @@ class ApiClient {
     }
   }
 
-  async login(email: string, password: string, rememberMe = true) {
-    const defaultUser = getDefaultUserForCredentials(email, password);
-    if (defaultUser) {
-      return { data: { user: defaultUser } };
+  async login(email?: string, password?: string, mobileNumber?: string, rememberMe = true) {
+    // Try default credentials if available
+    if (email && password) {
+      const defaultUser = getDefaultUserForCredentials(email, password);
+      if (defaultUser) {
+        // Ensure server JWT cookie exists for backend-authenticated routes.
+        // Demo "default credentials" bypasses Firebase sign-in, so without this,
+        // protected backend endpoints (like admin create garage) will fail.
+        if (this.hasBackendApi && this.backendApiAvailable) {
+          const apiResult = await this.request<{ user?: any }>("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email, password, rememberMe }),
+          });
+          if (apiResult.error) return { error: apiResult.error };
+        }
+        return { data: { user: defaultUser } };
+      }
     }
 
-    // Firebase Auth: sign in client-side, then optionally notify backend
+    // Prefer backend login when available (works with cookie sessions for all roles)
+    if (password && this.hasBackendApi && this.backendApiAvailable) {
+      try {
+        const payload: Record<string, unknown> = { password, rememberMe };
+        if (mobileNumber) payload.mobileNumber = mobileNumber;
+        if (email) payload.email = email;
+
+        const response = await this.request("/auth/login", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        if (response.error) {
+          // If backend explicitly rejects credentials, don't hide it behind Firebase fallback.
+          const status = Number(response.status || 0);
+          if (status === 401 || status === 403 || status === 400) {
+            return { error: response.error };
+          }
+
+          // For network/service issues, allow Firebase fallback below.
+          if (!this.isNetworkFailure(response.error)) {
+            return { error: response.error };
+          }
+        }
+
+        const backendData: any = response.data;
+        if (backendData?.user) {
+          return { data: { user: backendData.user } };
+        }
+
+        if (response.data) {
+          return { data: response.data };
+        }
+      } catch (err: any) {
+        // Continue to Firebase fallback below when backend is unreachable.
+      }
+    }
+
+    // Firebase Auth: sign in client-side with email, then optionally notify backend
+    if (!email || !password) {
+      return { error: "Email with password or mobile number is required" };
+    }
+
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const profile = await getProfile(userCred.user.uid);
@@ -305,7 +383,11 @@ class ApiClient {
   async forgotPassword(email: string) {
     try {
       const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
-      await sendPasswordResetEmail(auth, email, { url: redirectTo });
+      if (redirectTo) {
+        await sendPasswordResetEmail(auth, email, { url: redirectTo });
+      } else {
+        await sendPasswordResetEmail(auth, email);
+      }
       return { data: { success: true } };
     } catch (err: any) {
       return { error: err?.message || "Failed to send reset email" };
@@ -326,6 +408,12 @@ class ApiClient {
   }
 
   async getCurrentUser() {
+    // Prefer backend cookie session if available.
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.request<{ user?: any }>("/auth/me");
+      if (!apiResult.error) return apiResult;
+    }
+
     const user = auth.currentUser;
     if (!user) {
       return { data: { user: null } };
@@ -350,6 +438,35 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+  }
+
+  async getProfileDetailsApi() {
+    return this.request<any>("/auth/profile");
+  }
+
+  async updateProfileDetailsApi(data: {
+    name?: string;
+    full_name?: string;
+    mobileNumber?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+    bio?: string;
+    photoUrl?: string;
+  }) {
+    return this.request("/auth/update-profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadProfileImageApi(file: File) {
+    const formData = new FormData();
+    formData.append("image", file);
+    return this.uploadRequest<{ imageUrl: string }>("/auth/upload-profile-image", formData);
   }
 
   // Garage endpoints
@@ -388,13 +505,13 @@ class ApiClient {
   }
 
   async getMyGarageApi() {
-    const user = auth.currentUser;
-    if (!user) return { data: null };
-
     if (this.hasBackendApi && this.backendApiAvailable) {
       const apiResult = await this.request<any>("/garages/my-garage");
       if (!apiResult.error) return apiResult;
     }
+
+    const user = auth.currentUser;
+    if (!user) return { data: null };
 
     try {
       const garage = await getGarageByOwnerId(user.uid);
@@ -421,6 +538,30 @@ class ApiClient {
 
   async getGarageStaffApi(garageId: string) {
     return this.request<any[]>(`/staff/garage-staff/${garageId}`);
+  }
+
+  async createStaffApi(payload: {
+    name: string;
+    emailId: string;
+    mobileNumber: string;
+    address: string;
+    password: string;
+    services: string;
+    experienceYears?: number | null;
+    yearOfJoin?: number | null;
+    salary?: number | null;
+    profilePicUrl?: string | null;
+  }) {
+    return this.request("/staff/create", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async uploadStaffProfileImageApi(file: File) {
+    const formData = new FormData();
+    formData.append("image", file);
+    return this.uploadRequest<{ imageUrl: string }>("/staff/upload-profile-image", formData);
   }
 
   async createGarage(garageData: any, logoFile?: File) {
@@ -519,7 +660,19 @@ class ApiClient {
   }
 
   async getAdminBookings() {
-    return this.request<any[]>("/bookings/admin");
+    // Try backend API first
+    if (this.hasBackendApi && this.backendApiAvailable) {
+      const apiResult = await this.request<any[]>("/bookings/admin");
+      if (!apiResult.error) return apiResult;
+    }
+
+    // Firestore fallback
+    try {
+      const list = await getBookingsListFirestore();
+      return { data: list as any[] };
+    } catch (err: any) {
+      return { error: err?.message || "Failed to fetch admin bookings" };
+    }
   }
 
   async updateBookingStatus(trackingId: string, status: string) {
@@ -563,30 +716,47 @@ class ApiClient {
   }
 
   async getGarageBookings(garageId?: string) {
-    // For now, reuse regular bookings or if we have a specific endpoint /bookings/garage/:id
-    return this.request<any[]>("/bookings/admin");
+    const result = await this.request<any[]>("/bookings/admin");
+    if (result.error || !Array.isArray(result.data)) {
+      return result;
+    }
+
+    if (!garageId) {
+      return result;
+    }
+
+    const filtered = result.data.filter((b: any) => {
+      const bookingGarageId = String(b.garageId ?? b.garage_id ?? "").trim();
+      return bookingGarageId === String(garageId).trim();
+    });
+
+    return { ...result, data: filtered };
   }
 
   async getGarageAnalytics(garageId: string) {
-    const result = await this.getAdminBookings();
+    const result = await this.getGarageBookings(garageId);
 
     if (result.error || !result.data) {
       return { error: result.error || "Failed to fetch analytics" };
     }
 
     const bookings = result.data;
-    const totalRevenue = bookings.reduce((sum: number, b: any) => sum + (Number(b.total) || 0), 0);
-    const completedCount = bookings.filter((b: any) => b.status === "completed").length;
-    const pendingCount = bookings.filter((b: any) => b.status === "pending").length;
+    const amountOf = (b: any) => Number(b.total_price ?? b.totalPrice ?? b.total ?? b.subtotal ?? 0) || 0;
+    const normalizeStatus = (status?: string) => String(status || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+    const completedCount = bookings.filter((b: any) => normalizeStatus(b.status) === "completed").length;
+    const pendingCount = bookings.filter((b: any) => normalizeStatus(b.status) === "pending").length;
+    const completedRevenue = bookings
+      .filter((b: any) => normalizeStatus(b.status) === "completed")
+      .reduce((sum: number, b: any) => sum + amountOf(b), 0);
 
     return {
       data: {
-        totalRevenue,
+        totalRevenue: completedRevenue,
         totalBookings: bookings.length,
         completedBookings: completedCount,
         pendingBookings: pendingCount,
-        cancellations: bookings.filter((b: any) => b.status === "cancelled").length,
-        averageOrderValue: bookings.length > 0 ? totalRevenue / bookings.length : 0,
+        cancellations: bookings.filter((b: any) => normalizeStatus(b.status) === "cancelled").length,
+        averageOrderValue: completedCount > 0 ? completedRevenue / completedCount : 0,
       },
     };
   }
@@ -604,7 +774,8 @@ class ApiClient {
   }
 
   async getMyBookingsApi() {
-    return this.request<any[]>("/bookings/my-bookings");
+    const result = await this.request<any[]>("/bookings/my-bookings");
+    return result;
   }
 
   async getAdminBookingsApi() {
@@ -638,6 +809,41 @@ class ApiClient {
     return this.request(`/bookings/status/${trackingId}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+    });
+  }
+
+  async assignTaskToStaffApi(bookingId: string, staffUserId: string, staffName: string) {
+    return this.request(`/bookings/${bookingId}/assign-task`, {
+      method: "PATCH",
+      body: JSON.stringify({ staffUserId, staffName }),
+    });
+  }
+
+  async getStaffTasksApi() {
+    return this.request("/bookings/staff/my-tasks");
+  }
+
+  async getStaffGarageApi() {
+    return this.request("/staff/my-garage");
+  }
+
+  async updateTaskProgressApi(bookingId: string, taskStatus: string, progressPercentage: number, notes: string) {
+    return this.request(`/bookings/staff/task/${bookingId}/update-progress`, {
+      method: "PATCH",
+      body: JSON.stringify({ taskStatus, progressPercentage, notes }),
+    });
+  }
+
+  async sendContactMessageApi(data: {
+    name: string;
+    email: string;
+    phone?: string;
+    subject: string;
+    message: string;
+  }) {
+    return this.request("/contact", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   }
 }

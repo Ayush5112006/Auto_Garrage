@@ -19,10 +19,10 @@ export function PageTransition({ children, className }: PageTransitionProps) {
 
   const path = location.pathname;
   const isDashboardArea =
-    path.startsWith("/dashboard") ||
-    path.startsWith("/staff") ||
     path.startsWith("/admin") ||
-    path.startsWith("/garagehost");
+    path.startsWith("/customer") ||
+    path.startsWith("/garage") ||
+    path.startsWith("/mechanic");
 
   const animationClasses = isDashboardArea
     ? "animate-in fade-in-0 slide-in-from-right-2 zoom-in-95 duration-200"

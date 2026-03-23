@@ -15,15 +15,19 @@ function Model({ modelPath, color }: ModelProps) {
   const { scene } = useGLTF(modelPath);
   const preparedScene = useMemo(() => {
     const cloned = scene.clone(true);
-    if (!color) return cloned;
+    if (!color || typeof color !== 'string') return cloned;
 
-    cloned.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        child.material = child.material.clone();
-        child.material.color = new THREE.Color(color);
-        child.material.needsUpdate = true;
-      }
-    });
+    try {
+      cloned.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          child.material = child.material.clone();
+          child.material.color = new THREE.Color(color);
+          child.material.needsUpdate = true;
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to apply color to 3D model:', err);
+    }
 
     return cloned;
   }, [scene, color]);

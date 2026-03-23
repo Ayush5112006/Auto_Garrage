@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Wrench } from "lucide-react";
 import { useAuth } from "@/context/useAuth";
 import { Button } from "@/components/ui/button";
-import { NotificationCenter } from "@/components/NotificationCenter";
 
 interface NavLink {
   name: string;
@@ -16,12 +15,21 @@ const Navbar = (): JSX.Element => {
   const { user, logout } = useAuth();
 
   const role = String(user?.role || "guest").toLowerCase();
+  const path = location.pathname;
+
+  // Hide navbar for all role-specific dashboard areas, even before auth state is hydrated.
+  const isRoleAreaRoute =
+    path.startsWith("/admin") ||
+    path.startsWith("/garage") ||
+    path.startsWith("/mechanic") ||
+    path.startsWith("/staff");
+
+  const shouldHideNavbar = isRoleAreaRoute;
 
   const guestLinks: NavLink[] = [
     { name: "Home", path: "/" },
     { name: "Garages", path: "/garages" },
     { name: "Services", path: "/services" },
-    { name: "Pricing", path: "/pricing" },
     { name: "About", path: "/about" },
     { name: "Contact", path: "/contact" },
   ];
@@ -31,28 +39,22 @@ const Navbar = (): JSX.Element => {
     { name: "Book", path: "/booking" },
     { name: "Track", path: "/track" },
     { name: "Garages", path: "/garages" },
-    { name: "Dashboard", path: "/dashboard" },
+    { name: "Dashboard", path: "/customer/dashboard" },
   ];
 
   const staffLinks: NavLink[] = [
-    { name: "Home", path: "/" },
-    { name: "Staff", path: "/staff" },
+    { name: "Dashboard", path: "/mechanic/dashboard" },
     { name: "Track", path: "/track" },
-    { name: "Garages", path: "/garages" },
   ];
 
   const managerLinks: NavLink[] = [
-    { name: "Home", path: "/" },
-    { name: "Garage Host", path: "/garagehost" },
+    { name: "Dashboard", path: "/garage/dashboard" },
     { name: "Add Garage", path: "/garage/add" },
     { name: "Add Staff", path: "/garage/staff/add" },
   ];
 
   const adminLinks: NavLink[] = [
-    { name: "Home", path: "/" },
-    { name: "Admin", path: "/admin" },
-    { name: "Garages", path: "/garages" },
-    { name: "Staff", path: "/staff" },
+    { name: "Dashboard", path: "/admin/dashboard" },
   ];
 
   const navLinks: NavLink[] =
@@ -86,6 +88,10 @@ const Navbar = (): JSX.Element => {
     setIsOpen(false);
   }, [location.pathname]);
 
+  if (shouldHideNavbar) {
+    return <></>;
+  }
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/75 backdrop-blur-xl border-b border-border/70">
       <div className="container mx-auto px-4">
@@ -113,7 +119,6 @@ const Navbar = (): JSX.Element => {
             ))}
 
             <div className="flex items-center gap-3">
-              <NotificationCenter />
               {user ? (
                 <Button size="sm" variant="outline" onClick={handleLogout}>
                   Logout

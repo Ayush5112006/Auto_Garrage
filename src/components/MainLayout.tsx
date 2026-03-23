@@ -1,6 +1,5 @@
 import { Outlet } from "react-router-dom";
 import { PageTransition } from "@/components/ui/page-transition";
-import { WhatsAppButton } from "@/components/WhatsAppButton";
 
 export const MainLayout = () => {
     return (
@@ -10,11 +9,6 @@ export const MainLayout = () => {
                 <PageTransition>
                     <Outlet />
                 </PageTransition>
-            </div>
-
-            {/* WhatsApp Button - High z-index */}
-            <div className="relative z-50">
-                <WhatsAppButton />
             </div>
         </div>
     );

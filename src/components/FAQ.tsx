@@ -35,7 +35,7 @@ export const FAQ = () => {
                         <span className="text-sm text-primary font-medium">Common Questions</span>
                     </div>
                     <h2 className="font-display text-3xl md:text-4xl text-foreground mb-4">
-                        Frequently Asked <span className="text-gradient">Questions</span>
+                        Frequently Asked <span className="text-primary">Questions</span>
                     </h2>
                     <p className="text-muted-foreground">
                         Everything you need to know about our services and policies.
@@ -58,7 +58,7 @@ export const FAQ = () => {
                 </div>
             </div>
             <div className="absolute top-1/2 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-96 h-96 bg-garage-orange/5 rounded-full blur-3xl translate-y-1/2 translate-x-1/2 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl translate-y-1/2 translate-x-1/2 pointer-events-none" />
         </section>
     );
 };
