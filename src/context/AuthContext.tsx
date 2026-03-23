@@ -226,15 +226,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    const currentRole = user?.role || "customer";
-    const loginUrl = currentRole === "admin" ? "/admin/login" 
-                    : currentRole === "manager" ? "/garage/login"
-                    : currentRole === "staff" || currentRole === "mechanic" ? "/mechanic/login"
-                    : "/customer/login";
-    
     await api.logout();
     setUser(null);
-    navigate(loginUrl);
+    navigate("/login");
   };
 
   return (

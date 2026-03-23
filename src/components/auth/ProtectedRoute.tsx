@@ -35,16 +35,7 @@ export default function ProtectedRoute({ allowedRoles = [] }: ProtectedRouteProp
 
   // Not logged in → redirect to correct login page based on URL
   if (!user) {
-    if (location.pathname.startsWith("/admin")) {
-      return <Navigate to="/admin/login" state={{ from: location }} replace />;
-    }
-    if (location.pathname.startsWith("/garage")) {
-      return <Navigate to="/garage/login" state={{ from: location }} replace />;
-    }
-    if (location.pathname.startsWith("/mechanic")) {
-      return <Navigate to="/mechanic/login" state={{ from: location }} replace />;
-    }
-    return <Navigate to="/customer/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // Logged in but wrong role → redirect to their own dashboard

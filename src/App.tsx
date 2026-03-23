@@ -18,17 +18,14 @@ import Index from "./customer/Index";
 
 // Admin Pages
 const Admin = lazy(() => import("./admin/Admin"));
-const AdminLogin = lazy(() => import("./admin/AdminLogin"));
 
 // Mechanic/Staff Pages
 const MechanicDashboard = lazy(() => import("./mechanic/MechanicDashboard"));
 const StaffDashboard = lazy(() => import("./mechanic/StaffDashboard"));
-const StaffLogin = lazy(() => import("./mechanic/StaffLogin"));
 const AddStaff = lazy(() => import("./mechanic/AddStaff"));
 
 // Garage Pages
 const GarageHost = lazy(() => import("./garage/GarageHost"));
-const GarageLogin = lazy(() => import("./garage/GarageLogin"));
 const GarageListing = lazy(() => import("./garage/GarageListing"));
 const GarageDetail = lazy(() => import("./garage/GarageDetail"));
 const AddGarage = lazy(() => import("./garage/AddGarage"));
@@ -42,7 +39,7 @@ const ServicesPage = lazy(() => import("./customer/ServicesPage"));
 const Dashboard = lazy(() => import("./customer/Dashboard"));
 const Pricing = lazy(() => import("./customer/Pricing"));
 const Track = lazy(() => import("./customer/Tracking"));
-const CustomerLogin = lazy(() => import("./customer/CustomerLogin"));
+const Login = lazy(() => import("./pages/Login"));
 const ForgotPassword = lazy(() => import("./customer/ForgotPassword"));
 const ResetPassword = lazy(() => import("./customer/ResetPassword"));
 
@@ -59,24 +56,6 @@ const PageLoader = () => (
     </div>
   </div>
 );
-
-// Helper function to get dashboard URL for role
-const getDashboardUrl = (role: string) => {
-  const normalizedRole = String(role || "").toLowerCase();
-  if (normalizedRole === "admin") return "/admin/dashboard";
-  if (normalizedRole === "manager") return "/garage/dashboard";
-  if (normalizedRole === "staff" || normalizedRole === "mechanic") return "/mechanic/dashboard";
-  return "/customer/dashboard";
-};
-
-// Helper function to get login URL for role
-const getLoginUrl = (role: string) => {
-  const normalizedRole = String(role || "").toLowerCase();
-  if (normalizedRole === "admin") return "/admin/login";
-  if (normalizedRole === "manager") return "/garage/login";
-  if (normalizedRole === "staff" || normalizedRole === "mechanic") return "/mechanic/login";
-  return "/customer/login";
-};
 
 // Background layer - removed 3D car component
 const BackgroundLayer = () => {
@@ -138,13 +117,13 @@ export default function App() {
 
                 {/* Guest-only routes (login/register/password recovery - blocked if already logged in) */}
                 <Route element={<GuestRoute />}>
-                  <Route path="/login" element={<Navigate to="/customer/login" replace />} />
+                  <Route path="/login" element={<Login />} />
                   <Route path="/register" element={<Navigate to="/customer/register" replace />} />
-                  <Route path="/customer/login" element={<CustomerLogin />} />
+                  <Route path="/customer/login" element={<Navigate to="/login" replace />} />
                   <Route path="/customer/register" element={<Register />} />
-                  <Route path="/admin/login" element={<AdminLogin />} />
-                  <Route path="/garage/login" element={<GarageLogin />} />
-                  <Route path="/mechanic/login" element={<StaffLogin />} />
+                  <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+                  <Route path="/garage/login" element={<Navigate to="/login" replace />} />
+                  <Route path="/mechanic/login" element={<Navigate to="/login" replace />} />
                   <Route path="/customer/forgot-password" element={<ForgotPassword />} />
                 </Route>
 
